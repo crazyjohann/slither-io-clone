@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Slither.io Clone</title>
     <link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
             --ui-bg: rgba(10, 10, 25, 0.75);
@@ -13,218 +14,83 @@
             --primary: #00ffcc;
         }
 
-        * {
-            font-family: 'Silkscreen', 'Courier New', Courier, monospace;
-        }
+        * { font-family: 'Silkscreen', 'Courier New', Courier, monospace; }
 
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #05050a;
-            color: white;
-            user-select: none;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #05050a;
+            color: white; user-select: none; touch-action: none;
         }
 
-        canvas {
-            display: block;
-        }
+        canvas { display: block; }
 
         /* UI Overlays */
-        #ui-layer {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-        }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .panel { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: 8px; backdrop-filter: blur(4px); pointer-events: auto; }
 
-        .panel {
-            background: var(--ui-bg);
-            border: 1px solid var(--ui-border);
-            border-radius: 8px;
-            backdrop-filter: blur(4px);
-            pointer-events: auto;
-        }
-
-        /* Start / Death Screen */
         #overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-            pointer-events: auto;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; pointer-events: auto;
         }
 
-        #overlay h1 {
-            font-size: 4rem;
-            margin: 0 0 20px 0;
-            text-shadow: 0 0 20px var(--primary);
-            color: var(--primary);
-        }
-
-        /* Added styles for skin selector and room inputs */
-        .menu-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-        }
-        .skin-select {
-            padding: 10px;
-            font-size: 1.2rem;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            border: 2px solid var(--ui-border);
-            border-radius: 10px;
-            outline: none;
-            cursor: pointer;
-        }
-        .skin-select:focus { border-color: var(--primary); }
-        
-        .room-input {
-            padding: 12px;
-            font-size: 1.2rem;
-            border: 2px solid var(--ui-border);
-            border-radius: 10px;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            text-align: center;
-            width: 120px;
-            text-transform: uppercase;
-        }
-        
-        .btn-small {
-            padding: 12px 20px;
-            font-size: 1.2rem;
-        }
-
-        #stats-display {
-            display: none;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        #stats-display p {
-            font-size: 1.5rem;
-            margin: 5px 0;
-            color: #ddd;
-        }
+        #overlay h1 { font-size: 4rem; margin: 0 0 20px 0; text-shadow: 0 0 20px var(--primary); color: var(--primary); }
+        #stats-display { display: none; text-align: center; margin-bottom: 30px; }
+        #stats-display p { font-size: 1.5rem; margin: 5px 0; color: #ddd; }
 
         input[type="text"] {
-            padding: 15px 25px;
-            font-size: 1.5rem;
-            border: 2px solid var(--ui-border);
-            border-radius: 30px;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            text-align: center;
-            outline: none;
-            margin-bottom: 20px;
-            transition: border-color 0.3s;
+            padding: 15px 25px; font-size: 1.5rem; border: 2px solid var(--ui-border);
+            border-radius: 30px; background: rgba(0,0,0,0.5); color: white;
+            text-align: center; outline: none; margin-bottom: 20px; transition: border-color 0.3s;
         }
+        input[type="text"]:focus { border-color: var(--primary); }
 
-        input[type="text"]:focus {
-            border-color: var(--primary);
+        .menu-row { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; justify-content: center; width: 100%; }
+        .skin-select { padding: 10px; font-size: 1.2rem; background: rgba(0,0,0,0.5); color: white; border: 2px solid var(--ui-border); border-radius: 10px; outline: none; cursor: pointer; }
+        .room-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--ui-border); border-radius: 10px; background: rgba(0,0,0,0.5); color: white; text-align: center; width: 120px; text-transform: uppercase; }
+        
+        /* Custom Skin Color Pickers */
+        .color-picker {
+            -webkit-appearance: none; appearance: none;
+            border: 2px solid var(--ui-border); border-radius: 5px;
+            width: 35px; height: 35px; padding: 0; background: none; cursor: pointer;
         }
+        .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-picker::-webkit-color-swatch { border: none; border-radius: 3px; }
 
         button {
-            padding: 15px 40px;
-            font-size: 1.5rem;
-            background: var(--primary);
-            color: #000;
-            border: none;
-            border-radius: 30px;
-            cursor: pointer;
-            font-weight: bold;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
-            transition: transform 0.1s, box-shadow 0.1s;
+            padding: 15px 40px; font-size: 1.2rem; background: var(--primary); color: #000;
+            border: none; border-radius: 30px; cursor: pointer; font-weight: bold;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); transition: transform 0.1s, box-shadow 0.1s;
         }
+        button:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(0, 255, 204, 0.6); }
+        button:active { transform: scale(0.95); }
+        .btn-small { padding: 12px 20px; font-size: 1rem; }
 
-        button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 30px rgba(0, 255, 204, 0.6);
-        }
-
-        button:active {
-            transform: scale(0.95);
-        }
-
-        /* HUD */
-        #hud {
-            position: absolute;
-            top: 20px; left: 20px;
-            font-size: 1.2rem;
-            text-shadow: var(--text-glow);
-            display: none;
-        }
-
+        /* HUD & Leaderboard */
+        #hud { position: absolute; top: 20px; left: 20px; font-size: 1.2rem; text-shadow: var(--text-glow); display: none; }
         #hud div { margin-bottom: 5px; }
-
-        /* Leaderboard */
-        #leaderboard {
-            position: absolute;
-            top: 20px; right: 20px;
-            width: 200px;
-            padding: 15px;
-            display: none;
-        }
-
-        #leaderboard h3 {
-            margin: 0 0 10px 0;
-            text-align: center;
-            font-size: 1.1rem;
-            color: #aaa;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        #lb-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        #lb-list li {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 1rem;
-        }
-
-        .lb-player {
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        .lb-rank { width: 25px; color: #888; }
+        #leaderboard { position: absolute; top: 20px; right: 20px; width: 220px; padding: 15px; display: none; }
+        #leaderboard h3 { margin: 0 0 10px 0; text-align: center; font-size: 1.1rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        #lb-list { list-style: none; padding: 0; margin: 0; }
+        #lb-list li { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem; }
+        .lb-player { color: var(--primary); font-weight: bold; }
+        .lb-rank { width: 35px; color: #888; }
         .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lb-score { font-family: monospace; }
 
         /* Minimap */
         #minimap-container {
-            position: absolute;
-            bottom: 20px; right: 20px;
-            width: 150px; height: 150px;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.5);
-            border: 2px solid var(--ui-border);
-            overflow: hidden;
-            display: none;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px;
+            border-radius: 50%; background: rgba(0, 0, 0, 0.5); border: 2px solid var(--ui-border);
+            overflow: hidden; display: none; box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
-
-        #minimap {
-            width: 100%; height: 100%;
-        }
-
+        #minimap { width: 100%; height: 100%; }
+        
+        /* Mobile warning */
+        #mobile-hint { display: none; color: #aaa; margin-top: 10px; font-size: 0.8rem; }
+        @media (max-width: 768px) { #mobile-hint { display: block; } }
     </style>
 </head>
 <body>
@@ -268,6 +134,14 @@
             </select>
         </div>
 
+        <!-- Custom Skin Builder UI (Hidden by default) -->
+        <div id="custom-skin-ui" class="menu-row" style="display: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; border: 2px solid var(--ui-border); width: max-content; margin: 0 auto 15px auto;">
+            <span style="margin-right: 10px;">Color 1:</span>
+            <input type="color" id="custom-c1" value="#ff0055" class="color-picker">
+            <span style="margin-left: 15px; margin-right: 10px;">Color 2:</span>
+            <input type="color" id="custom-c2" value="#00ffcc" class="color-picker">
+        </div>
+
         <div class="menu-row">
             <button id="play-offline-btn" class="btn-small">Play Offline</button>
             <button id="host-btn" class="btn-small">Host Online</button>
@@ -279,964 +153,523 @@
         </div>
         
         <p id="menu-msg" style="color: var(--primary); display: none; margin-top: 10px; font-weight: bold;"></p>
+        <p id="mobile-hint">Tap and drag to move. Tap with second finger to boost!</p>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // --- Constants & Config ---
+    <script>
         const GAME = {
-            MAP_RADIUS: 4000,
-            BASE_SPEED: 3,
-            BOOST_SPEED: 6.5,
-            TURN_SPEED: 0.12,
-            BASE_SIZE: 12,
-            SEGMENT_SPACING: 0.45, // Multiplier of radius
-            MIN_BOOST_LENGTH: 12,
-            FPS: 60,
-            MAX_ORBS: 800,
-            BOT_COUNT: 25
+            MAP_RADIUS: 4000, BASE_SPEED: 3.5, BOOST_SPEED: 7.5, TURN_SPEED: 0.15,
+            BASE_SIZE: 12, SEGMENT_SPACING: 0.45, MIN_BOOST_LENGTH: 12,
+            MAX_ORBS: 800, BOT_COUNT: 25
         };
 
-        const COLORS = [
-            '#ff0055', '#00ffcc', '#ffcc00', '#cc00ff', '#00ff33', '#0066ff', 
-            '#ff6600', '#ff00cc', '#33ccff', '#ccff00'
-        ];
+        const COLORS = ['#ff0055', '#00ffcc', '#ffcc00', '#cc00ff', '#00ff33', '#0066ff', '#ff6600', '#ff00cc', '#33ccff', '#ccff00'];
+        const BOT_NAMES = ["Shadow", "Viper", "Noodle", "Snakey", "DangerRope", "Snek", "Apex", "Ghost", "Venom", "Titan", "Wormzilla", "Slippy"];
 
-        const BOT_NAMES = [
-            "Shadow", "Viper", "Noodle", "Snakey", "DangerRope", "Snek", 
-            "Apex", "Ghost", "Venom", "Titan", "Wormzilla", "Slippy",
-            "Glider", "Predator", "Byte", "Crawler", "Spaghetti", "Fang"
-        ];
-
-        // --- Global State ---
         const canvas = document.getElementById('game');
-        const ctx = canvas.getContext('2d', { alpha: false }); // Optimize
+        const ctx = canvas.getContext('2d', { alpha: false });
         const minimapCanvas = document.getElementById('minimap');
         const minimapCtx = minimapCanvas.getContext('2d');
 
-        let width, height;
-        let snakes = [];
-        let orbs = [];
-        let player = null;
-        let camera = { x: 0, y: 0 };
-        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false };
-        let state = 'MENU'; // MENU, PLAYING, DEAD
-        let frameCount = 0;
-        let lastTime = 0;
+        let width, height, snakes = [], orbs = [], player = null, camera = { x: 0, y: 0 };
+        let keys = { up: false, down: false, left: false, right: false, space: false };
+        let mouseX = 0, mouseY = 0, useMouse = true;
+        let state = 'MENU', frameCount = 0, lastTime = 0, secretKeys = "";
+        let isMultiplayer = false, roomCode = "", socket = null, syncInterval = null;
 
-        // Multiplayer Globals
-        let isMultiplayer = false;
-        let roomCode = "";
-        let db, auth, userId;
-        let networkUnsubscribe = null;
-        let syncInterval = null;
-        let secretKeys = "";
+        const overlay = document.getElementById('overlay'), nameInput = document.getElementById('player-name');
+        const skinSelect = document.getElementById('skin-select'), playOfflineBtn = document.getElementById('play-offline-btn');
+        const hostBtn = document.getElementById('host-btn'), joinBtn = document.getElementById('join-btn');
+        const roomCodeInput = document.getElementById('room-code-input'), menuMsg = document.getElementById('menu-msg');
+        const hud = document.getElementById('hud'), leaderboard = document.getElementById('leaderboard');
+        const minimapContainer = document.getElementById('minimap-container'), statsDisplay = document.getElementById('stats-display');
+        const customSkinUi = document.getElementById('custom-skin-ui');
 
-        // UI Elements
-        const overlay = document.getElementById('overlay');
-        const nameInput = document.getElementById('player-name');
-        const skinSelect = document.getElementById('skin-select');
-        const playOfflineBtn = document.getElementById('play-offline-btn');
-        const hostBtn = document.getElementById('host-btn');
-        const joinBtn = document.getElementById('join-btn');
-        const roomCodeInput = document.getElementById('room-code-input');
-        const menuMsg = document.getElementById('menu-msg');
-        const hud = document.getElementById('hud');
-        const leaderboard = document.getElementById('leaderboard');
-        const minimapContainer = document.getElementById('minimap-container');
-        const statsDisplay = document.getElementById('stats-display');
-
-        // --- Math & Utils ---
-        function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
-            canvas.width = width;
-            canvas.height = height;
-            minimapCanvas.width = 150;
-            minimapCanvas.height = 150;
+        function resize() { 
+            width = window.innerWidth; height = window.innerHeight; 
+            canvas.width = width; canvas.height = height; 
+            minimapCanvas.width = 150; minimapCanvas.height = 150; 
+            mouseX = width / 2; mouseY = height / 2;
         }
-        window.addEventListener('resize', resize);
-        resize();
+        window.addEventListener('resize', resize); resize();
 
         function rand(min, max) { return Math.random() * (max - min) + min; }
-        function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
         function distSq(x1, y1, x2, y2) { return (x2 - x1)**2 + (y2 - y1)**2; }
-        function lerpAngle(a, b, t) {
-            let diff = b - a;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            return a + diff * t;
-        }
-
-        // --- Classes ---
+        function lerpAngle(a, b, t) { let diff = b - a; while (diff < -Math.PI) diff += Math.PI * 2; while (diff > Math.PI) diff -= Math.PI * 2; return a + diff * t; }
 
         class Orb {
             constructor(x, y, sizeType, color) {
-                this.x = x;
-                this.y = y;
-                this.color = color || COLORS[Math.floor(Math.random() * COLORS.length)];
-                
-                // sizeType: 0=small, 1=medium, 2=large(dropped), 3=fleeing
+                this.x = x; this.y = y; this.color = color || COLORS[Math.floor(Math.random() * COLORS.length)];
                 this.type = sizeType;
                 if (sizeType === 0) { this.radius = rand(3, 5); this.mass = 2; }
                 else if (sizeType === 1) { this.radius = rand(6, 9); this.mass = 5; }
                 else if (sizeType === 2) { this.radius = rand(8, 14); this.mass = rand(10, 20); }
-                else if (sizeType === 3) { this.radius = 12; this.mass = 30; } // Fleeing
-                
-                this.targetX = this.x;
-                this.targetY = this.y;
+                else if (sizeType === 3) { this.radius = 12; this.mass = 30; }
                 this.isFleeing = (sizeType === 3);
             }
-
             update() {
                 if (this.isFleeing) {
-                    // Slowly drift or flee from nearest snake
-                    let nearestSq = Infinity;
-                    let threat = null;
+                    let nearestSq = Infinity, threat = null;
                     for(let s of snakes) {
                         let d = distSq(this.x, this.y, s.head.x, s.head.y);
-                        if(d < 40000 && d < nearestSq) { // 200px radius
-                            nearestSq = d;
-                            threat = s;
-                        }
+                        if(d < 40000 && d < nearestSq) { nearestSq = d; threat = s; }
                     }
-
                     if (threat) {
                         let angle = Math.atan2(this.y - threat.head.y, this.x - threat.head.x);
-                        this.x += Math.cos(angle) * 2;
-                        this.y += Math.sin(angle) * 2;
-                        
-                        // Keep in bounds
-                        let dCenter = dist(0,0, this.x, this.y);
-                        if(dCenter > GAME.MAP_RADIUS - 50) {
+                        this.x += Math.cos(angle) * 2; this.y += Math.sin(angle) * 2;
+                        if(Math.sqrt(distSq(0,0, this.x, this.y)) > GAME.MAP_RADIUS - 50) {
                             let a = Math.atan2(this.y, this.x);
-                            this.x = (GAME.MAP_RADIUS - 50) * Math.cos(a);
-                            this.y = (GAME.MAP_RADIUS - 50) * Math.sin(a);
+                            this.x = (GAME.MAP_RADIUS - 50) * Math.cos(a); this.y = (GAME.MAP_RADIUS - 50) * Math.sin(a);
                         }
                     }
                 }
             }
-
             draw(ctx) {
-                // Only draw if within camera
-                if (this.x < camera.x - 50 || this.x > camera.x + width + 50 ||
-                    this.y < camera.y - 50 || this.y > camera.y + height + 50) return;
-
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                
-                // Add simple glow
+                if (this.x < camera.x - 50 || this.x > camera.x + width + 50 || this.y < camera.y - 50 || this.y > camera.y + height + 50) return;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-                grad.addColorStop(0, '#fff');
-                grad.addColorStop(0.3, this.color);
-                grad.addColorStop(1, 'rgba(0,0,0,0)');
-                
-                ctx.fillStyle = grad;
-                ctx.fill();
+                grad.addColorStop(0, '#fff'); grad.addColorStop(0.3, this.color); grad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grad; ctx.fill();
             }
         }
 
         class Snake {
             constructor(x, y, isPlayer, name, skin = 'random') {
-                this.isPlayer = isPlayer;
-                this.name = name;
-                this.skin = skin;
-                this.mass = 100;
-                this.targetLength = 10;
-                this.segments = [];
+                this.isPlayer = isPlayer; this.name = name; this.skin = skin;
+                this.mass = 100; this.targetLength = 10; this.segments = [];
                 
-                if (this.skin === 'random') {
-                    this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
-                } else {
-                    this.color = this.skin;
-                }
-                
-                this.angle = rand(0, Math.PI * 2);
-                this.targetAngle = this.angle;
-                this.speed = GAME.BASE_SPEED;
-                this.isBoosting = false;
-                this.alive = true;
-                
-                this.radius = GAME.BASE_SIZE;
-                
-                // Network specific
-                this.isRemote = false;
-                this.netId = null;
-                this.netTarget = null;
-                
-                // Bot specific
-                this.botState = 'WANDER'; // WANDER, CHASE, FLEE
-                this.botTarget = null;
-                this.botTimer = 0;
-                this.turnNoise = rand(-0.5, 0.5);
-
-                for (let i = 0; i < this.targetLength; i++) {
-                    this.segments.push({ x: x, y: y });
-                }
+                // Set fallback color just in case
+                this.color = (this.skin === 'random') ? COLORS[Math.floor(Math.random() * COLORS.length)] : 
+                             (this.skin.startsWith('custom') ? '#ffffff' : this.skin);
+                             
+                this.angle = rand(0, Math.PI * 2); this.targetAngle = this.angle;
+                this.speed = GAME.BASE_SPEED; this.isBoosting = false; this.alive = true;
+                this.radius = GAME.BASE_SIZE; this.isRemote = false; this.netId = null; this.netTarget = null;
+                this.botState = 'WANDER'; this.botTarget = null; this.botTimer = 0; this.turnNoise = rand(-0.5, 0.5);
+                for (let i = 0; i < this.targetLength; i++) this.segments.push({ x: x, y: y });
                 this.head = this.segments[0];
             }
-
             get length() { return this.segments.length; }
-
+            
             update() {
                 if (!this.alive) return;
-
-                // 1. Calculate Mass & Size
                 this.targetLength = Math.floor(this.mass / 15) + 10;
-                this.radius = GAME.BASE_SIZE + Math.log10(this.mass / 50) * 3;
+                let safeMass = Math.max(50, this.mass); 
+                this.radius = GAME.BASE_SIZE + Math.log10(safeMass / 50) * 3;
 
-                // 2. Control Logic
                 if (this.isPlayer) {
-                    // Arrow Key Control
-                    let dx = 0;
-                    let dy = 0;
-                    if (keys.ArrowUp) dy -= 1;
-                    if (keys.ArrowDown) dy += 1;
-                    if (keys.ArrowLeft) dx -= 1;
-                    if (keys.ArrowRight) dx += 1;
-                    
-                    if (dx !== 0 || dy !== 0) {
-                        this.targetAngle = Math.atan2(dy, dx);
-                    }
-                    
-                    if (keys.Space && this.length > GAME.MIN_BOOST_LENGTH) {
-                        this.isBoosting = true;
-                    } else {
-                        this.isBoosting = false;
-                    }
-                } else if (this.isRemote) {
-                    // Remote Player Network Interpolation
-                    if (this.netTarget) {
-                        this.targetAngle = this.netTarget.angle;
-                        this.mass = this.netTarget.mass; // Snap mass for size correctness
-                        
-                        // Drift correction towards their actual network position
-                        let dx = this.netTarget.x - this.head.x;
-                        let dy = this.netTarget.y - this.head.y;
-                        this.head.x += dx * 0.1;
-                        this.head.y += dy * 0.1;
-                        
-                        this.isBoosting = this.netTarget.isBoosting || false;
-                    }
-                } else {
-                    // Bot AI
+                    let dx = 0, dy = 0;
+                    if (keys.up) dy -= 1; if (keys.down) dy += 1;
+                    if (keys.left) dx -= 1; if (keys.right) dx += 1;
+                    if (dx !== 0 || dy !== 0) { this.targetAngle = Math.atan2(dy, dx); useMouse = false; } 
+                    else if (useMouse) { this.targetAngle = Math.atan2(mouseY - height / 2, mouseX - width / 2); }
+                    this.isBoosting = (keys.space && this.length > GAME.MIN_BOOST_LENGTH);
+                } else if (this.isRemote && this.netTarget) {
+                    this.targetAngle = this.netTarget.angle; this.mass = this.netTarget.mass;
+                    this.head.x += (this.netTarget.x - this.head.x) * 0.2; this.head.y += (this.netTarget.y - this.head.y) * 0.2;
+                    this.isBoosting = this.netTarget.isBoosting || false;
+                } else if (!this.isRemote) {
                     this.updateBotAI();
                 }
 
-                // 3. Apply Angle & Speed
                 this.angle = lerpAngle(this.angle, this.targetAngle, GAME.TURN_SPEED);
-                
                 if (this.isBoosting) {
                     this.speed = GAME.BOOST_SPEED;
-                    // Lose mass, drop pellets
                     if (frameCount % 6 === 0) {
-                        this.mass -= 3;
+                        this.mass = Math.max(10, this.mass - 3);
                         let dropSegment = this.segments[this.segments.length - 1];
                         orbs.push(new Orb(dropSegment.x, dropSegment.y, 0, this.color));
                     }
-                    if (this.mass < (GAME.MIN_BOOST_LENGTH - 10) * 15) {
-                        this.isBoosting = false; // Force stop boost
-                    }
+                    if (this.mass < (GAME.MIN_BOOST_LENGTH - 10) * 15) this.isBoosting = false;
                 } else {
                     this.speed = GAME.BASE_SPEED;
                 }
 
-                // 4. Move Head
-                let vx = Math.cos(this.angle) * this.speed;
-                let vy = Math.sin(this.angle) * this.speed;
-                this.head.x += vx;
-                this.head.y += vy;
+                let vx = Math.cos(this.angle) * this.speed, vy = Math.sin(this.angle) * this.speed;
+                this.head.x += vx; this.head.y += vy;
 
-                // 5. Check Boundaries
-                let distToCenter = dist(0, 0, this.head.x, this.head.y);
-                if (distToCenter > GAME.MAP_RADIUS - this.radius) {
-                    this.die();
-                    return;
-                }
+                if (Math.sqrt(distSq(0, 0, this.head.x, this.head.y)) > GAME.MAP_RADIUS - this.radius) { this.die(); return; }
 
-                // 6. Update Body Segments (Chain Inverse Kinematics)
                 let targetSpacing = this.radius * GAME.SEGMENT_SPACING;
-                
-                // Add new segments if growing
-                while (this.segments.length < this.targetLength) {
-                    let last = this.segments[this.segments.length - 1];
-                    this.segments.push({ x: last.x, y: last.y });
-                }
-                // Remove segments if shrinking
-                while (this.segments.length > this.targetLength) {
-                    this.segments.pop();
-                }
+                while (this.segments.length < this.targetLength) this.segments.push({ x: this.segments[this.segments.length - 1].x, y: this.segments[this.segments.length - 1].y });
+                while (this.segments.length > this.targetLength) this.segments.pop();
 
                 for (let i = 1; i < this.segments.length; i++) {
-                    let curr = this.segments[i];
-                    let prev = this.segments[i - 1];
-                    
-                    let dx = prev.x - curr.x;
-                    let dy = prev.y - curr.y;
-                    let d = Math.hypot(dx, dy);
-                    
-                    if (d > targetSpacing) {
-                        let ratio = (d - targetSpacing) / d;
-                        curr.x += dx * ratio;
-                        curr.y += dy * ratio;
-                    }
+                    let curr = this.segments[i], prev = this.segments[i - 1];
+                    let dx = prev.x - curr.x, dy = prev.y - curr.y, d = Math.hypot(dx, dy);
+                    if (d > targetSpacing) { let ratio = (d - targetSpacing) / d; curr.x += dx * ratio; curr.y += dy * ratio; }
                 }
             }
 
             updateBotAI() {
                 this.botTimer--;
-                
-                // Avoid boundaries strongly
-                let dCenter = dist(0, 0, this.head.x, this.head.y);
-                if (dCenter > GAME.MAP_RADIUS - 400) {
-                    this.targetAngle = Math.atan2(-this.head.y, -this.head.x) + this.turnNoise;
-                    this.isBoosting = false;
-                    return;
-                }
-
+                if (Math.sqrt(distSq(0, 0, this.head.x, this.head.y)) > GAME.MAP_RADIUS - 400) { this.targetAngle = Math.atan2(-this.head.y, -this.head.x) + this.turnNoise; this.isBoosting = false; return; }
                 if (this.botTimer <= 0) {
-                    this.botTimer = Math.floor(rand(20, 60));
-                    this.turnNoise = rand(-0.3, 0.3);
-                    
-                    // Evaluate State
-                    let nearestThreat = null;
-                    let nearestThreatDist = Infinity;
-                    let nearestFood = null;
-                    let nearestFoodDist = Infinity;
-                    let nearestPrey = null;
-                    let nearestPreyDist = Infinity;
-
-                    // Check other snakes
-                    for (let s of snakes) {
-                        if (s === this || !s.alive) continue;
-                        let d = distSq(this.head.x, this.head.y, s.head.x, s.head.y);
-                        if (d < 160000) { // 400px radius
-                            if (s.mass > this.mass * 1.2 && d < nearestThreatDist) {
-                                nearestThreatDist = d;
-                                nearestThreat = s;
-                            } else if (s.mass * 1.5 < this.mass && d < nearestPreyDist) {
-                                nearestPreyDist = d;
-                                nearestPrey = s;
-                            }
-                        }
-                    }
-
-                    // Check orbs
-                    for (let o of orbs) {
-                        let d = distSq(this.head.x, this.head.y, o.x, o.y);
-                        if (d < 90000 && d < nearestFoodDist) { // 300px
-                            nearestFoodDist = d;
-                            nearestFood = o;
-                        }
-                    }
-
-                    // Determine State
-                    if (nearestThreat && nearestThreatDist < 60000) {
-                        this.botState = 'FLEE';
-                        this.botTarget = nearestThreat;
-                    } else if (nearestPrey && nearestPreyDist < 90000) {
-                        this.botState = 'CHASE';
-                        this.botTarget = nearestPrey;
-                    } else if (nearestFood) {
-                        this.botState = 'WANDER';
-                        this.botTarget = nearestFood;
-                    } else {
-                        this.botState = 'WANDER';
-                        this.botTarget = null;
-                    }
+                    this.botTimer = Math.floor(rand(20, 60)); this.turnNoise = rand(-0.3, 0.3);
+                    let nearestFood = null, nearestFoodDist = Infinity;
+                    for (let o of orbs) { let d = distSq(this.head.x, this.head.y, o.x, o.y); if (d < 90000 && d < nearestFoodDist) { nearestFoodDist = d; nearestFood = o; } }
+                    if (nearestFood) { this.botState = 'WANDER'; this.botTarget = nearestFood; } else { this.botState = 'WANDER'; this.botTarget = null; }
                 }
-
-                // Execute State
-                if (this.botState === 'FLEE' && this.botTarget) {
-                    this.targetAngle = Math.atan2(this.head.y - this.botTarget.head.y, this.head.x - this.botTarget.head.x) + this.turnNoise;
-                    this.isBoosting = (this.length > GAME.MIN_BOOST_LENGTH && Math.random() > 0.5);
-                } 
-                else if (this.botState === 'CHASE' && this.botTarget) {
-                    // Try to cut off
-                    let predictX = this.botTarget.head.x + Math.cos(this.botTarget.angle) * 100;
-                    let predictY = this.botTarget.head.y + Math.sin(this.botTarget.angle) * 100;
-                    this.targetAngle = Math.atan2(predictY - this.head.y, predictX - this.head.x);
-                    this.isBoosting = (this.length > GAME.MIN_BOOST_LENGTH && Math.random() > 0.3);
-                }
-                else if (this.botState === 'WANDER') {
+                if (this.botState === 'WANDER') {
                     this.isBoosting = false;
-                    if (this.botTarget && this.botTarget.x) { // Food
-                        this.targetAngle = Math.atan2(this.botTarget.y - this.head.y, this.botTarget.x - this.head.x);
-                    } else {
-                        this.targetAngle += this.turnNoise * 0.1;
-                    }
+                    if (this.botTarget && this.botTarget.x) this.targetAngle = Math.atan2(this.botTarget.y - this.head.y, this.botTarget.x - this.head.x);
+                    else this.targetAngle += this.turnNoise * 0.1;
                 }
             }
 
             draw(ctx) {
-                // Frustum culling approximation
-                if (this.head.x < camera.x - 500 || this.head.x > camera.x + width + 500 ||
-                    this.head.y < camera.y - 500 || this.head.y > camera.y + height + 500) return;
-
-                // Draw body (reverse order so head is on top)
-                ctx.fillStyle = this.color;
-                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                if (this.head.x < camera.x - 500 || this.head.x > camera.x + width + 500 || this.head.y < camera.y - 500 || this.head.y > camera.y + height + 500) return;
+                
+                let isGhost = this.skin === 'ghost';
+                ctx.strokeStyle = isGhost ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.3)';
                 ctx.lineWidth = 2;
 
+                // Draw Body Segments
                 for (let i = this.segments.length - 1; i >= 0; i--) {
                     let seg = this.segments[i];
+                    if (seg.x < camera.x - this.radius || seg.x > camera.x + width + this.radius || seg.y < camera.y - this.radius || seg.y > camera.y + height + this.radius) continue;
                     
-                    // Simple culling per segment
-                    if (seg.x < camera.x - this.radius || seg.x > camera.x + width + this.radius ||
-                        seg.y < camera.y - this.radius || seg.y > camera.y + height + this.radius) continue;
-
                     ctx.beginPath();
-                    // Make tail taper off slightly
                     let scale = 1 - (i / this.segments.length) * 0.3; 
                     ctx.arc(seg.x, seg.y, this.radius * scale, 0, Math.PI * 2);
                     
-                    // Rainbow Secret Skin Effect
-                    if (this.skin === 'rainbow') {
-                        ctx.fillStyle = `hsl(${(frameCount * 3 + i * 5) % 360}, 100%, 50%)`;
-                    }
+                    // Secret Skin Segment Styling
+                    if (this.skin === 'rainbow') { ctx.fillStyle = `hsl(${(frameCount * 3 + i * 5) % 360}, 100%, 50%)`; }
+                    else if (this.skin === 'zebra') { ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#000000'; }
+                    else if (this.skin === 'fire') { const fire = ['#ff0000', '#ff5500', '#ffcc00']; ctx.fillStyle = fire[(i + Math.floor(frameCount/5)) % 3]; }
+                    else if (isGhost) { ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'; }
+                    else if (this.skin && this.skin.startsWith('custom|')) {
+                        let parts = this.skin.split('|'); ctx.fillStyle = (i % 2 === 0) ? parts[1] : parts[2];
+                    } 
+                    else { ctx.fillStyle = this.color; }
                     
-                    ctx.fill();
-                    ctx.stroke();
+                    ctx.fill(); ctx.stroke();
                 }
 
-                // Draw head details
-                ctx.beginPath();
-                ctx.arc(this.head.x, this.head.y, this.radius * 1.05, 0, Math.PI * 2);
+                // Draw Head
+                ctx.beginPath(); ctx.arc(this.head.x, this.head.y, this.radius * 1.05, 0, Math.PI * 2);
                 
-                if (this.skin === 'rainbow') {
-                    ctx.fillStyle = `hsl(${(frameCount * 3) % 360}, 100%, 50%)`;
-                } else {
-                    ctx.fillStyle = this.color;
-                }
+                // Secret Skin Head Styling
+                if (this.skin === 'rainbow') { ctx.fillStyle = `hsl(${(frameCount * 3) % 360}, 100%, 50%)`; }
+                else if (this.skin === 'zebra') { ctx.fillStyle = '#ffffff'; }
+                else if (this.skin === 'fire') { ctx.fillStyle = '#ffcc00'; }
+                else if (isGhost) { ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; }
+                else if (this.skin && this.skin.startsWith('custom|')) { ctx.fillStyle = this.skin.split('|')[1]; }
+                else { ctx.fillStyle = this.color; }
                 
-                ctx.fill();
-                ctx.stroke();
+                ctx.fill(); ctx.stroke();
 
-                // Eyes
-                let eyeOffset = this.radius * 0.5;
-                let eyeAngle = Math.PI * 0.25;
-                
-                ctx.fillStyle = '#fff';
-                // Left eye
-                let lx = this.head.x + Math.cos(this.angle - eyeAngle) * eyeOffset;
-                let ly = this.head.y + Math.sin(this.angle - eyeAngle) * eyeOffset;
+                // Draw Eyes
+                let eyeOffset = this.radius * 0.5, eyeAngle = Math.PI * 0.25;
+                ctx.fillStyle = isGhost ? 'rgba(255,255,255,0.6)' : '#fff';
+                let lx = this.head.x + Math.cos(this.angle - eyeAngle) * eyeOffset, ly = this.head.y + Math.sin(this.angle - eyeAngle) * eyeOffset;
                 ctx.beginPath(); ctx.arc(lx, ly, this.radius * 0.3, 0, Math.PI*2); ctx.fill();
-                
-                // Right eye
-                let rx = this.head.x + Math.cos(this.angle + eyeAngle) * eyeOffset;
-                let ry = this.head.y + Math.sin(this.angle + eyeAngle) * eyeOffset;
+                let rx = this.head.x + Math.cos(this.angle + eyeAngle) * eyeOffset, ry = this.head.y + Math.sin(this.angle + eyeAngle) * eyeOffset;
                 ctx.beginPath(); ctx.arc(rx, ry, this.radius * 0.3, 0, Math.PI*2); ctx.fill();
 
-                // Pupils
-                ctx.fillStyle = '#000';
-                let px = Math.cos(this.angle) * (this.radius * 0.1);
-                let py = Math.sin(this.angle) * (this.radius * 0.1);
+                // Draw Pupils
+                ctx.fillStyle = isGhost ? 'rgba(0,0,0,0.5)' : '#000';
+                let px = Math.cos(this.angle) * (this.radius * 0.1), py = Math.sin(this.angle) * (this.radius * 0.1);
                 ctx.beginPath(); ctx.arc(lx + px, ly + py, this.radius * 0.15, 0, Math.PI*2); ctx.fill();
                 ctx.beginPath(); ctx.arc(rx + px, ry + py, this.radius * 0.15, 0, Math.PI*2); ctx.fill();
 
-                // Draw Name
                 if (this.name) {
-                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                    ctx.font = '14px "Silkscreen", Arial';
-                    ctx.textAlign = 'center';
+                    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '14px "Silkscreen", Arial'; ctx.textAlign = 'center';
                     ctx.fillText(this.name, this.head.x, this.head.y - this.radius - 10);
                 }
             }
 
             die() {
                 this.alive = false;
-                
-                // Explode into orbs
-                let drops = Math.min(this.mass / 5, 100); // Cap drops to prevent lag
-                let massPerDrop = this.mass / drops;
+                let drops = Math.max(1, Math.min(this.mass / 5, 100));
+                let massPerDrop = Math.max(1, this.mass / drops);
                 let dropType = massPerDrop > 15 ? 2 : 1;
-
-                for (let i = 0; i < this.segments.length; i += 2) { // Drop along body
+                
+                // Use a default color for drops if using a secret skin
+                let dropColor = this.color;
+                if (this.skin === 'rainbow') dropColor = '#ff00cc';
+                else if (this.skin === 'zebra') dropColor = '#ffffff';
+                else if (this.skin === 'fire') dropColor = '#ff5500';
+                else if (this.skin === 'ghost') dropColor = '#aaaaaa';
+                else if (this.skin && this.skin.startsWith('custom|')) dropColor = this.skin.split('|')[1];
+                
+                for (let i = 0; i < this.segments.length; i += 2) {
                     if(Math.random() > 0.3) continue;
-                    let seg = this.segments[i];
-                    // Scatter slightly
-                    let ox = seg.x + rand(-20, 20);
-                    let oy = seg.y + rand(-20, 20);
-                    orbs.push(new Orb(ox, oy, dropType, this.color));
+                    orbs.push(new Orb(this.segments[i].x + rand(-20, 20), this.segments[i].y + rand(-20, 20), dropType, dropColor));
                 }
-
+                
                 if (this.isPlayer) {
                     showDeathScreen();
-                    if (isMultiplayer) syncDeath(); // Sync death to network
-                } else {
-                    // Respawn bot after delay (only if offline)
-                    if (!isMultiplayer && !this.isRemote) {
-                        setTimeout(() => {
-                            if (state === 'PLAYING') spawnBot();
-                        }, rand(2000, 5000));
-                    }
+                    if (isMultiplayer && socket) socket.emit('playerDied');
+                } else if (!isMultiplayer && !this.isRemote) {
+                    setTimeout(() => { if (state === 'PLAYING') spawnBot(); }, rand(2000, 5000));
                 }
             }
         }
 
         // --- Core Logic ---
-
         function spawnOrb(type) {
-            let angle = rand(0, Math.PI * 2);
-            let distToCenter = rand(0, GAME.MAP_RADIUS - 50);
-            let x = Math.cos(angle) * distToCenter;
-            let y = Math.sin(angle) * distToCenter;
-            orbs.push(new Orb(x, y, type));
+            let angle = rand(0, Math.PI * 2), distToCenter = rand(0, GAME.MAP_RADIUS - 50);
+            orbs.push(new Orb(Math.cos(angle) * distToCenter, Math.sin(angle) * distToCenter, type));
         }
 
         function spawnBot() {
-            let angle = rand(0, Math.PI * 2);
-            let distToCenter = rand(0, GAME.MAP_RADIUS - 200);
-            let x = Math.cos(angle) * distToCenter;
-            let y = Math.sin(angle) * distToCenter;
-            let name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-            let bot = new Snake(x, y, false, name, 'random');
-            bot.mass = rand(100, 500); // Give bots some random starting mass
-            snakes.push(bot);
-        }
-        
-        function showMsg(msg, color = 'var(--primary)') {
-            menuMsg.style.color = color;
-            menuMsg.innerText = msg;
-            menuMsg.style.display = 'block';
+            let angle = rand(0, Math.PI * 2), distToCenter = rand(0, GAME.MAP_RADIUS - 200);
+            let bot = new Snake(Math.cos(angle) * distToCenter, Math.sin(angle) * distToCenter, false, BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], 'random');
+            bot.mass = rand(100, 500); snakes.push(bot);
         }
 
-        async function initFirebase() {
-            if (typeof __firebase_config === 'undefined') return false;
-            try {
-                const config = JSON.parse(__firebase_config);
-                const app = initializeApp(config);
-                auth = getAuth(app);
-                db = getFirestore(app);
+        function showMsg(msg, color = 'var(--primary)') { menuMsg.style.color = color; menuMsg.innerText = msg; menuMsg.style.display = 'block'; }
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+        function setupNetwork() {
+            if (socket) socket.disconnect();
+            socket = io(window.location.origin); 
+
+            socket.on('connect_error', (err) => { showMsg("Failed to connect to multiplayer server.", "red"); console.error(err); });
+
+            socket.emit('joinRoom', {
+                roomCode: roomCode,
+                playerState: { name: player.name, skin: player.skin, x: player.head.x, y: player.head.y, angle: player.angle, mass: player.mass, isBoosting: player.isBoosting }
+            });
+
+            socket.on('roomState', (data) => { for (let id in data.players) { if (id !== socket.id) addOrUpdateRemotePlayer(id, data.players[id]); } });
+            socket.on('playerJoined', (data) => addOrUpdateRemotePlayer(data.id, data));
+            socket.on('playerMoved', (data) => addOrUpdateRemotePlayer(data.id, data));
+            socket.on('playerLeft', (id) => removeRemotePlayer(id));
+            socket.on('playerDied', (id) => removeRemotePlayer(id));
+
+            syncInterval = setInterval(() => {
+                if (player && player.alive) {
+                    socket.emit('updatePosition', { x: player.head.x, y: player.head.y, angle: player.angle, mass: player.mass, isBoosting: player.isBoosting });
                 }
-                userId = auth.currentUser.uid;
-                return true;
-            } catch (e) {
-                console.error("Firebase init failed:", e);
-                return false;
+            }, 100);
+        }
+
+        function addOrUpdateRemotePlayer(id, data) {
+            let existing = snakes.find(s => s.netId === id);
+            if (existing) { existing.netTarget = data; if (data.name) existing.name = data.name; } 
+            else {
+                let newSnake = new Snake(data.x, data.y, false, data.name || "Player", data.skin);
+                newSnake.netId = id; newSnake.isRemote = true; newSnake.mass = data.mass; snakes.push(newSnake);
             }
         }
 
-        function cleanupNetwork() {
-            if (networkUnsubscribe) { networkUnsubscribe(); networkUnsubscribe = null; }
-            if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
-        }
-
-        function setupNetwork() {
-            if (!userId) return; // Prevent network sync without auth
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const playersRef = collection(db, 'artifacts', appId, 'public', 'data', 'slither_players');
-            
-            // Real-time listener
-            networkUnsubscribe = onSnapshot(playersRef, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    const data = change.doc.data();
-                    const id = data.id;
-                    
-                    // Ignore self and players in other rooms
-                    if (id === userId || data.room !== roomCode) return;
-
-                    if (change.type === 'added' || change.type === 'modified') {
-                        if (!data.alive) {
-                            let existing = snakes.find(s => s.netId === id);
-                            if (existing && existing.alive) existing.die();
-                        } else {
-                            let existing = snakes.find(s => s.netId === id);
-                            if (existing) {
-                                existing.netTarget = { x: data.x, y: data.y, angle: data.angle, mass: data.mass, isBoosting: data.isBoosting };
-                                if (data.name) existing.name = data.name;
-                            } else {
-                                let newSnake = new Snake(data.x, data.y, false, data.name || "Player", data.skin);
-                                newSnake.netId = id;
-                                newSnake.isRemote = true;
-                                newSnake.mass = data.mass;
-                                snakes.push(newSnake);
-                            }
-                        }
-                    }
-                    if (change.type === 'removed') {
-                        let existing = snakes.find(s => s.netId === id);
-                        if (existing && existing.alive) existing.die();
-                    }
-                });
-            }, (err) => console.error(err));
-
-            // Sync loop (approx 5 fps to save quota while keeping playable)
-            syncInterval = setInterval(() => {
-                if (!player || !player.alive) return;
-                const pDoc = doc(db, 'artifacts', appId, 'public', 'data', 'slither_players', userId);
-                setDoc(pDoc, {
-                    id: userId,
-                    room: roomCode,
-                    name: player.name,
-                    skin: player.skin,
-                    x: player.head.x,
-                    y: player.head.y,
-                    angle: player.angle,
-                    mass: player.mass,
-                    isBoosting: player.isBoosting,
-                    alive: player.alive,
-                    timestamp: Date.now()
-                }).catch(e => console.error("Sync error:", e));
-            }, 200);
-        }
-
-        function syncDeath() {
-            if (!db || !userId) return;
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const pDoc = doc(db, 'artifacts', appId, 'public', 'data', 'slither_players', userId);
-            setDoc(pDoc, { id: userId, room: roomCode, alive: false, timestamp: Date.now() }).catch(e => {});
-            cleanupNetwork();
-        }
+        function removeRemotePlayer(id) { let existing = snakes.find(s => s.netId === id); if (existing && existing.alive) existing.die(); }
 
         function initGameEnvironment() {
-            snakes = [];
-            orbs = [];
-            frameCount = 0;
-            cleanupNetwork();
+            snakes = []; orbs = []; frameCount = 0;
+            if (syncInterval) clearInterval(syncInterval);
 
             document.getElementById('title').innerText = "SLITHER";
             statsDisplay.style.display = 'none';
 
-            let pname = nameInput.value.trim() || "Player";
-            let skin = skinSelect.value;
-            player = new Snake(0, 0, true, pname, skin);
+            // Resolve selected skin
+            let chosenSkin = skinSelect.value;
+            if (chosenSkin === 'custom') {
+                chosenSkin = `custom|${document.getElementById('custom-c1').value}|${document.getElementById('custom-c2').value}`;
+            }
+
+            player = new Snake(0, 0, true, nameInput.value.trim() || "Player", chosenSkin);
             snakes.push(player);
 
-            // Initial Orbs (Ambient local food for smooth graphics)
             for (let i = 0; i < GAME.MAX_ORBS / 2; i++) spawnOrb(0);
             for(let i=0; i < 5; i++) spawnOrb(3);
 
-            // Hide UI
-            overlay.style.display = 'none';
-            menuMsg.style.display = 'none';
-            hud.style.display = 'block';
-            leaderboard.style.display = 'block';
-            minimapContainer.style.display = 'block';
+            overlay.style.display = 'none'; menuMsg.style.display = 'none'; customSkinUi.style.display = 'none';
+            hud.style.display = 'block'; leaderboard.style.display = 'block'; minimapContainer.style.display = 'block';
 
-            state = 'PLAYING';
-            lastTime = performance.now();
-            requestAnimationFrame(gameLoop);
+            state = 'PLAYING'; lastTime = performance.now();
+            canvas.focus(); requestAnimationFrame(gameLoop);
         }
 
-        // Button Listeners for modes
         playOfflineBtn.addEventListener('click', () => {
-            isMultiplayer = false;
-            initGameEnvironment();
+            isMultiplayer = false; initGameEnvironment();
             for (let i = 0; i < GAME.BOT_COUNT; i++) spawnBot();
         });
 
-        hostBtn.addEventListener('click', async () => {
-            showMsg("Connecting to server...");
-            const ok = await initFirebase();
-            if (!ok) { showMsg("Multiplayer unavailable right now.", "red"); return; }
-            
-            isMultiplayer = true;
-            const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            roomCode = "";
+        hostBtn.addEventListener('click', () => {
+            isMultiplayer = true; roomCode = ""; const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
             for(let i=0; i<4; i++) roomCode += chars.charAt(Math.floor(Math.random() * chars.length));
-            
-            initGameEnvironment();
-            setupNetwork();
+            initGameEnvironment(); setupNetwork();
         });
 
-        joinBtn.addEventListener('click', async () => {
+        joinBtn.addEventListener('click', () => {
             const code = roomCodeInput.value.toUpperCase();
             if(code.length !== 4) { showMsg("Please enter a 4-letter code.", "red"); return; }
-            
-            showMsg("Joining room...");
-            const ok = await initFirebase();
-            if (!ok) { showMsg("Multiplayer unavailable right now.", "red"); return; }
+            isMultiplayer = true; roomCode = code; initGameEnvironment(); setupNetwork();
+        });
 
-            isMultiplayer = true;
-            roomCode = code;
-            initGameEnvironment();
-            setupNetwork();
+        // Toggle custom color picker UI based on selection
+        skinSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'custom') { customSkinUi.style.display = 'flex'; } 
+            else { customSkinUi.style.display = 'none'; }
         });
 
         function showDeathScreen() {
             state = 'DEAD';
             document.getElementById('title').innerText = "YOU DIED!";
             document.getElementById('final-length').innerText = `Final Length: ${player.length}`;
-            
-            // Find rank
             snakes.sort((a, b) => b.mass - a.mass);
-            let rank = snakes.indexOf(player) + 1;
-            document.getElementById('final-rank').innerText = `Rank Reached: ${rank} of ${snakes.length}`;
+            document.getElementById('final-rank').innerText = `Rank Reached: ${snakes.indexOf(player) + 1} of ${snakes.length}`;
+            statsDisplay.style.display = 'block'; overlay.style.display = 'flex';
+            hud.style.display = 'none'; leaderboard.style.display = 'none'; minimapContainer.style.display = 'none';
             
-            statsDisplay.style.display = 'block';
-            overlay.style.display = 'flex';
-            
-            hud.style.display = 'none';
-            leaderboard.style.display = 'none';
-            minimapContainer.style.display = 'none';
+            // Re-show custom skin UI if it was selected
+            if (skinSelect.value === 'custom') customSkinUi.style.display = 'flex';
         }
 
         function checkCollisions() {
-            // Player Eating Orbs
             for (let i = orbs.length - 1; i >= 0; i--) {
                 let o = orbs[i];
-                let eaten = false;
-                
                 for (let s of snakes) {
                     if (!s.alive) continue;
-                    let eatDist = s.radius + o.radius + 5;
-                    if (distSq(s.head.x, s.head.y, o.x, o.y) < eatDist * eatDist) {
-                        s.mass += o.mass;
-                        orbs.splice(i, 1);
-                        eaten = true;
-                        break;
+                    if (distSq(s.head.x, s.head.y, o.x, o.y) < (s.radius + o.radius + 5)**2) {
+                        s.mass += o.mass; orbs.splice(i, 1); break;
                     }
                 }
             }
-
-            // Snake vs Snake (Head to Body)
             for (let s1 of snakes) {
                 if (!s1.alive) continue;
-                
                 for (let s2 of snakes) {
-                    if (s1 === s2 || !s2.alive) continue;
-
-                    // Quick bounding box check (optimization)
-                    let dx = s1.head.x - s2.head.x;
-                    let dy = s1.head.y - s2.head.y;
-                    if (Math.abs(dx) > s2.targetLength * 15 + 100 || Math.abs(dy) > s2.targetLength * 15 + 100) continue;
-
+                    if (s1 === s2 || !s2.alive || (s1.isRemote && s2.isRemote)) continue;
+                    if (Math.abs(s1.head.x - s2.head.x) > s2.targetLength * 15 + 100 || Math.abs(s1.head.y - s2.head.y) > s2.targetLength * 15 + 100) continue;
                     let hit = false;
-                    // Check against all segments of s2
-                    for (let i = 0; i < s2.segments.length; i+=2) { // Check every 2nd segment for perf
-                        let seg = s2.segments[i];
-                        let collisionDist = s1.radius * 0.8 + s2.radius * 0.8; // forgiving hitbox
-                        
-                        if (distSq(s1.head.x, s1.head.y, seg.x, seg.y) < collisionDist * collisionDist) {
-                            
-                            // Head to Head Special Case (i == 0)
+                    for (let i = 0; i < s2.segments.length; i+=2) {
+                        if (distSq(s1.head.x, s1.head.y, s2.segments[i].x, s2.segments[i].y) < (s1.radius * 0.8 + s2.radius * 0.8)**2) {
                             if (i === 0) {
-                                if (s1.mass > s2.mass) {
-                                    s2.die(); // S1 eats S2
-                                } else if (s2.mass > s1.mass) {
-                                    s1.die(); // S2 eats S1
-                                    hit = true;
-                                } else {
-                                    // Tie, both die
-                                    s1.die(); s2.die();
-                                    hit = true;
-                                }
-                            } else {
-                                // S1 hit S2's body
-                                s1.die();
-                                hit = true;
-                            }
+                                if (s1.mass > s2.mass) { s2.die(); } else if (s2.mass > s1.mass) { s1.die(); hit = true; } else { s1.die(); s2.die(); hit = true; }
+                            } else { s1.die(); hit = true; }
                             break;
                         }
                     }
-                    if (hit) break; // S1 is dead, stop checking
+                    if (hit) break;
                 }
             }
         }
 
         function updateUI() {
             if (!player || !player.alive) return;
-
-            // HUD
             document.getElementById('score-length').innerText = `Length: ${player.length}`;
             document.getElementById('score-mass').innerText = `Mass: ${Math.floor(player.mass)}`;
 
-            // Leaderboard (update every ~0.5s)
             if (frameCount % 30 === 0) {
                 snakes.sort((a, b) => b.mass - a.mass);
-                let html = '';
-                let pRank = -1;
-                
+                let html = '', pRank = -1;
                 for (let i = 0; i < Math.min(10, snakes.length); i++) {
-                    let s = snakes[i];
-                    if (!s.alive) continue;
-                    let isP = s === player;
-                    if (isP) pRank = i + 1;
-                    
-                    html += `
-                        <li class="${isP ? 'lb-player' : ''}">
-                            <span class="lb-rank">#${i+1}</span>
-                            <span class="lb-name">${s.name}</span>
-                            <span class="lb-score">${s.length}</span>
-                        </li>
-                    `;
+                    let s = snakes[i]; if (!s.alive) continue;
+                    let isP = s === player; if (isP) pRank = i + 1;
+                    html += `<li class="${isP ? 'lb-player' : ''}"><span class="lb-rank">#${i+1}</span><span class="lb-name">${s.name}</span><span class="lb-score">${s.length}</span></li>`;
                 }
                 document.getElementById('lb-list').innerHTML = html;
-                
-                if (pRank === -1) {
-                    pRank = snakes.indexOf(player) + 1;
-                }
-                
-                let rankText = `Rank: #${pRank} of ${snakes.length}`;
-                if (isMultiplayer) rankText = `Room: ${roomCode} | ` + rankText;
-                document.getElementById('score-rank').innerText = rankText;
+                if (pRank === -1) pRank = snakes.indexOf(player) + 1;
+                document.getElementById('score-rank').innerText = isMultiplayer ? `Room: ${roomCode} | Rank: #${pRank} of ${snakes.length}` : `Rank: #${pRank} of ${snakes.length}`;
             }
 
-            // Minimap
             minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-            
-            // Map background
-            minimapCtx.fillStyle = 'rgba(20,20,40,0.8)';
-            minimapCtx.beginPath();
-            minimapCtx.arc(75, 75, 75, 0, Math.PI*2);
-            minimapCtx.fill();
-            minimapCtx.strokeStyle = 'rgba(255,255,255,0.2)';
-            minimapCtx.stroke();
-
-            // Draw dots
+            minimapCtx.fillStyle = 'rgba(20,20,40,0.8)'; minimapCtx.beginPath(); minimapCtx.arc(75, 75, 75, 0, Math.PI*2); minimapCtx.fill();
+            minimapCtx.strokeStyle = 'rgba(255,255,255,0.2)'; minimapCtx.stroke();
             let scale = 75 / GAME.MAP_RADIUS;
             for (let s of snakes) {
                 if (!s.alive) continue;
-                let mx = 75 + s.head.x * scale;
-                let my = 75 + s.head.y * scale;
-                
-                minimapCtx.fillStyle = s === player ? '#fff' : s.color;
+                minimapCtx.fillStyle = s === player ? '#fff' : (s.skin.startsWith('custom|') ? s.skin.split('|')[1] : s.color); 
                 minimapCtx.beginPath();
-                minimapCtx.arc(mx, my, s === player ? 3 : 1.5, 0, Math.PI*2);
-                minimapCtx.fill();
+                minimapCtx.arc(75 + s.head.x * scale, 75 + s.head.y * scale, s === player ? 3 : 1.5, 0, Math.PI*2); minimapCtx.fill();
             }
         }
 
         function drawBackground() {
-            ctx.fillStyle = '#05050a';
-            ctx.fillRect(0, 0, width, height);
-
-            ctx.save();
-            ctx.translate(-camera.x, -camera.y);
-
-            // Draw grid dots
+            ctx.fillStyle = '#05050a'; ctx.fillRect(0, 0, width, height);
+            ctx.save(); ctx.translate(-camera.x, -camera.y);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-            let spacing = 100;
-            let startX = Math.floor(camera.x / spacing) * spacing;
-            let startY = Math.floor(camera.y / spacing) * spacing;
-            
+            let spacing = 100, startX = Math.floor(camera.x / spacing) * spacing, startY = Math.floor(camera.y / spacing) * spacing;
             for (let x = startX; x < camera.x + width; x += spacing) {
                 for (let y = startY; y < camera.y + height; y += spacing) {
-                    // Only draw inside map
-                    if (distSq(x, y, 0, 0) < GAME.MAP_RADIUS * GAME.MAP_RADIUS) {
-                        ctx.beginPath();
-                        ctx.arc(x, y, 2, 0, Math.PI*2);
-                        ctx.fill();
-                    }
+                    if (distSq(x, y, 0, 0) < GAME.MAP_RADIUS**2) { ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2); ctx.fill(); }
                 }
             }
-
-            // Map Boundary
-            ctx.beginPath();
-            ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 0, 50, 0.3)';
-            ctx.lineWidth = 10;
-            ctx.stroke();
-
+            ctx.beginPath(); ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 0, 50, 0.3)'; ctx.lineWidth = 10; ctx.stroke();
             ctx.restore();
         }
 
         function gameLoop(timestamp) {
             if (state !== 'PLAYING') return;
+            let dt = timestamp - lastTime; lastTime = timestamp; frameCount++;
 
-            // Frame timing
-            let dt = timestamp - lastTime;
-            lastTime = timestamp;
-            frameCount++;
-
-            // Update
-            if (frameCount % 10 === 0 && orbs.length < GAME.MAX_ORBS) {
-                spawnOrb(Math.random() > 0.95 ? 3 : 0); // rarely spawn fleeing orbs
-            }
-
+            if (frameCount % 10 === 0 && orbs.length < GAME.MAX_ORBS) spawnOrb(Math.random() > 0.95 ? 3 : 0);
             for (let o of orbs) o.update();
             for (let s of snakes) s.update();
-            
             checkCollisions();
-            
-            // Cleanup dead snakes
             snakes = snakes.filter(s => s.alive);
 
-            // Camera follow player
-            if (player && player.alive) {
-                // Smooth camera follow
-                camera.x += (player.head.x - width/2 - camera.x) * 0.1;
-                camera.y += (player.head.y - height/2 - camera.y) * 0.1;
-            }
+            if (player && player.alive) { camera.x += (player.head.x - width/2 - camera.x) * 0.1; camera.y += (player.head.y - height/2 - camera.y) * 0.1; }
 
-            // Render
             drawBackground();
-
-            ctx.save();
-            ctx.translate(-camera.x, -camera.y);
-            
-            // Draw Orbs
+            ctx.save(); ctx.translate(-camera.x, -camera.y);
             for (let o of orbs) o.draw(ctx);
-            
-            // Draw Snakes (Sort by mass so bigger snakes draw on top)
-            let sortedSnakes = [...snakes].sort((a,b) => a.mass - b.mass);
-            for (let s of sortedSnakes) s.draw(ctx);
-
+            [...snakes].sort((a,b) => a.mass - b.mass).forEach(s => s.draw(ctx));
             ctx.restore();
 
             updateUI();
-
-            if (state === 'PLAYING') {
-                requestAnimationFrame(gameLoop);
-            }
+            if (state === 'PLAYING') requestAnimationFrame(gameLoop);
         }
 
-        // --- Input Handling ---
-        
+        // --- INPUT HANDLING ---
         window.addEventListener('keydown', e => {
-            if (e.code === 'ArrowUp' || e.key === 'ArrowUp') keys.ArrowUp = true;
-            if (e.code === 'ArrowDown' || e.key === 'ArrowDown') keys.ArrowDown = true;
-            if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') keys.ArrowLeft = true;
-            if (e.code === 'ArrowRight' || e.key === 'ArrowRight') keys.ArrowRight = true;
-            if (e.code === 'Space' || e.key === ' ') keys.Space = true;
-        });
-
-        window.addEventListener('keyup', e => {
-            if (e.code === 'ArrowUp' || e.key === 'ArrowUp') keys.ArrowUp = false;
-            if (e.code === 'ArrowDown' || e.key === 'ArrowDown') keys.ArrowDown = false;
-            if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') keys.ArrowLeft = false;
-            if (e.code === 'ArrowRight' || e.key === 'ArrowRight') keys.ArrowRight = false;
-            if (e.code === 'Space' || e.key === ' ') keys.Space = false;
-        });
-
-        // Secret Skin Unlocker
-        window.addEventListener('keydown', e => {
+            if (e.code === 'ArrowUp' || e.key === 'w') keys.up = true;
+            if (e.code === 'ArrowDown' || e.key === 's') keys.down = true;
+            if (e.code === 'ArrowLeft' || e.key === 'a') keys.left = true;
+            if (e.code === 'ArrowRight' || e.key === 'd') keys.right = true;
+            if (e.code === 'Space' || e.key === ' ') keys.space = true;
+            
+            // Secret Code Listener
             if (e.key && e.key.length === 1 && state === 'MENU') {
                 secretKeys += e.key.toLowerCase();
                 if (secretKeys.length > 20) secretKeys = secretKeys.substring(secretKeys.length - 20);
+                
                 if (secretKeys.includes("secretskin")) {
-                    let exists = Array.from(skinSelect.options).some(opt => opt.value === 'rainbow');
-                    if (!exists) {
-                        let opt = document.createElement('option');
-                        opt.value = "rainbow";
-                        opt.text = "🌈 SECRET RAINBOW 🌈";
-                        opt.style.fontWeight = "bold";
-                        opt.style.color = "#ff00cc";
-                        skinSelect.add(opt);
+                    if (!document.getElementById('secret-unlocked')) {
+                        const createOpt = (val, text, color) => {
+                            let opt = document.createElement('option'); opt.value = val; opt.text = text;
+                            opt.style.fontWeight = "bold"; opt.style.color = color; return opt;
+                        };
+                        
+                        skinSelect.add(createOpt('rainbow', '🌈 Rainbow', '#ff00cc'));
+                        skinSelect.add(createOpt('zebra', '🦓 Zebra', '#ffffff'));
+                        skinSelect.add(createOpt('fire', '🔥 Fire Animated', '#ff5500'));
+                        skinSelect.add(createOpt('ghost', '👻 Transparent Ghost', '#aaaaaa'));
+                        skinSelect.add(createOpt('custom', '🎨 Custom Colors...', '#00ffcc'));
+                        
+                        let marker = document.createElement('option'); marker.id = 'secret-unlocked'; marker.style.display = 'none';
+                        skinSelect.add(marker);
+
                         skinSelect.value = "rainbow";
-                        showMsg("SECRET SKIN UNLOCKED!", "#ff00cc");
-                        secretKeys = "";
+                        showMsg("SECRET SKINS UNLOCKED!", "#ff00cc");
                     }
+                    secretKeys = "";
                 }
             }
         });
 
-        nameInput.addEventListener('keypress', e => {
-            if (e.key === 'Enter') {
-                isMultiplayer = false;
-                initGameEnvironment();
-                for (let i = 0; i < GAME.BOT_COUNT; i++) spawnBot();
-            }
+        window.addEventListener('keyup', e => {
+            if (e.code === 'ArrowUp' || e.key === 'w') keys.up = false;
+            if (e.code === 'ArrowDown' || e.key === 's') keys.down = false;
+            if (e.code === 'ArrowLeft' || e.key === 'a') keys.left = false;
+            if (e.code === 'ArrowRight' || e.key === 'd') keys.right = false;
+            if (e.code === 'Space' || e.key === ' ') keys.space = false;
         });
+
+        window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; useMouse = true; });
+        window.addEventListener('mousedown', e => { if (state === 'PLAYING') keys.space = true; });
+        window.addEventListener('mouseup', e => { keys.space = false; });
+        
+        window.addEventListener('touchstart', e => {
+            if (state !== 'PLAYING') return;
+            mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; useMouse = true;
+            if (e.touches.length > 1) keys.space = true; 
+        }, {passive: false});
+        window.addEventListener('touchmove', e => { mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }, {passive: false});
+        window.addEventListener('touchend', e => { if (e.touches.length < 2) keys.space = false; });
 
     </script>
 </body>
