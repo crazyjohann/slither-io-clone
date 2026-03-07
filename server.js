@@ -18,6 +18,11 @@ io.on('connection', (socket) => {
     console.log('🟢 A player connected:', socket.id);
     let currentRoom = null;
 
+    // Ping/pong for latency display
+    socket.on('ping_check', () => {
+        socket.emit('pong_check');
+    });
+
     // When a player joins a room
     socket.on('joinRoom', (data) => {
         const { roomCode, playerState } = data;
@@ -36,6 +41,8 @@ io.on('connection', (socket) => {
 
         // Tell everyone else in the room that a new player joined
         socket.to(roomCode).emit('playerJoined', { id: socket.id, ...playerState });
+
+        console.log(`📦 ${socket.id} joined room ${roomCode} (${Object.keys(rooms[roomCode].players).length} players)`);
     });
 
     // When a player moves
@@ -61,10 +68,11 @@ io.on('connection', (socket) => {
         if (currentRoom && rooms[currentRoom]) {
             delete rooms[currentRoom].players[socket.id];
             socket.to(currentRoom).emit('playerLeft', socket.id);
-            
-            // Clean up empty rooms to save computer memory
+
+            // Clean up empty rooms to save memory
             if (Object.keys(rooms[currentRoom].players).length === 0) {
                 delete rooms[currentRoom];
+                console.log(`🗑️  Room ${currentRoom} cleaned up`);
             }
         }
     });
@@ -73,4 +81,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Multiplayer Game Server is running!`);
     console.log(`👉 Open your browser and go to: http://localhost:${PORT}`);
+    console.log(`📁 Make sure your game HTML is in the "public" folder`);
 });
