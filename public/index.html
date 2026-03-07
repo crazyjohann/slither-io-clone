@@ -5,10 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Slither.io Clone Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
-    <!-- socket.io stub for offline play -->
+    <!-- socket.io: loads real lib if server exists, otherwise stubs it -->
     <script>
-        // Stub so multiplayer references don't crash when running locally
-        window.io = function() { return { emit: function(){}, on: function(){}, disconnect: function(){} }; };
+        (function() {
+            var s = document.createElement('script');
+            s.src = '/socket.io/socket.io.js';
+            s.onerror = function() {
+                window.io = function() {
+                    return { emit: function(){}, on: function(){}, disconnect: function(){}, connected: false };
+                };
+                window._socketAvailable = false;
+            };
+            s.onload = function() { window._socketAvailable = true; };
+            document.head.appendChild(s);
+        })();
     </script>
     <style>
         :root {
@@ -148,7 +158,17 @@
         #pause-btns { display: flex; gap: 14px; }
         #pause-btns button { width: 160px; padding: 12px; font-size: 1rem; }
 
-        #controls-hint { color: #888; margin-top: 25px; font-size: 0.9rem; text-align: center; line-height: 1.5; }
+        #controls-hint { color: #666; margin-top: 8px; font-size: 0.82rem; text-align: center; line-height: 1.6; }
+        .room-step { display:flex; align-items:flex-start; gap:12px; color:#bbb; font-size:0.9rem; line-height:1.5; }
+        .room-step b { color:#fff; }
+        .step-num { background:rgba(0,255,204,0.12); border:1px solid rgba(0,255,204,0.3); color:var(--primary); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; flex-shrink:0; margin-top:1px; }
+        .map-card { border:2px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px; cursor:pointer; transition:all 0.15s; text-align:center; background:rgba(0,0,0,0.4); }
+        .map-card:hover { border-color:rgba(0,255,204,0.4); background:rgba(0,255,204,0.06); }
+        .map-card.selected { border-color:var(--primary); background:rgba(0,255,204,0.1); box-shadow:0 0 12px rgba(0,255,204,0.2); }
+        .map-card .map-icon { font-size:1.8rem; display:block; margin-bottom:5px; }
+        .map-card .map-name { font-size:0.85rem; color:#ccc; font-weight:bold; }
+        .map-card .map-desc { font-size:0.72rem; color:#666; margin-top:3px; }
+        .map-card.selected .map-name { color:var(--primary); }
         .key-badge { background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); color: white; }
         .style-btn { padding: 10px 6px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.5); color: #ccc; cursor: pointer; text-align: center; font-size: 0.85rem; transition: all 0.15s; user-select:none; }
         .style-btn:hover { border-color: var(--primary); color: white; background: rgba(0,255,204,0.08); }
@@ -216,47 +236,101 @@
     <!-- MAIN MENU -->
     <div id="overlay">
         <div id="settings-btn" title="Settings">⚙️</div>
-        
-        <div id="title-container">
-            <span class="title-letter" style="animation-delay: 0.0s">S</span>
-            <span class="title-letter" style="animation-delay: 0.1s">L</span>
-            <span class="title-letter" style="animation-delay: 0.2s">I</span>
-            <span class="title-letter" style="animation-delay: 0.3s">T</span>
-            <span class="title-letter" style="animation-delay: 0.4s">H</span>
-            <span class="title-letter" style="animation-delay: 0.5s">E</span>
-            <span class="title-letter" style="animation-delay: 0.6s">R</span>
-        </div>
-        
-        <div class="menu-container">
-            <div class="menu-section">
-                <h2>Profile</h2>
-                <input type="text" id="player-name" placeholder="Enter Nickname" maxlength="15" autocomplete="off">
-                <select id="skin-select" class="skin-select">
-                    <option value="random">Random Skin</option>
-                    <option value="#ff0055">Neon Red</option>
-                    <option value="#00ffcc">Cyan</option>
-                    <option value="#00ff33">Slime Green</option>
-                    <option value="#cc00ff">Purple</option>
-                    <option value="#ffcc00">Gold</option>
-                </select>
-            </div>
 
-            <div class="menu-section">
-                <h2>Play Mode</h2>
-                <button id="play-offline-btn">Play Offline (Bots)</button>
-                <button id="host-btn" class="btn-secondary" style="margin-top: 10px;">Host Server</button>
-                <div class="join-row">
-                    <input type="text" id="room-code-input" placeholder="CODE" maxlength="4" autocomplete="off">
-                    <button id="join-btn" class="btn-secondary">Join</button>
-                </div>
-                <p id="menu-msg" style="color: var(--secondary); display: none; margin: 0; font-weight: bold; text-align: center; font-size: 0.9rem;"></p>
+        <div id="title-container">
+            <span class="title-letter" style="animation-delay:0.0s">S</span>
+            <span class="title-letter" style="animation-delay:0.1s">L</span>
+            <span class="title-letter" style="animation-delay:0.2s">I</span>
+            <span class="title-letter" style="animation-delay:0.3s">T</span>
+            <span class="title-letter" style="animation-delay:0.4s">H</span>
+            <span class="title-letter" style="animation-delay:0.5s">E</span>
+            <span class="title-letter" style="animation-delay:0.6s">R</span>
+        </div>
+
+        <!-- Profile card -->
+        <div class="menu-section" style="width:100%;max-width:360px;">
+            <h2>Profile</h2>
+            <input type="text" id="player-name" placeholder="Enter Nickname" maxlength="15" autocomplete="off">
+            <select id="skin-select" class="skin-select">
+                <option value="random">Random Skin</option>
+                <option value="#ff0055">Neon Red</option>
+                <option value="#00ffcc">Cyan</option>
+                <option value="#00ff33">Slime Green</option>
+                <option value="#cc00ff">Purple</option>
+                <option value="#ffcc00">Gold</option>
+            </select>
+        </div>
+
+        <!-- Play buttons -->
+        <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;">
+            <button id="play-offline-btn" style="font-size:1.1rem;">▶ Play vs Bots</button>
+            <div style="display:flex;gap:10px;">
+                <button id="create-room-btn" class="btn-secondary" style="flex:1;">🌐 Create Room</button>
+                <button id="join-room-btn" class="btn-secondary" style="flex:1;">🔗 Join Room</button>
             </div>
         </div>
+
+        <p id="menu-msg" style="color:var(--secondary);display:none;margin:0;font-weight:bold;text-align:center;font-size:0.9rem;max-width:360px;"></p>
 
         <p id="controls-hint">
-            Steer: <span class="key-badge">Mouse</span> or <span class="key-badge">A / D</span><br><br>
-            Boost: <span class="key-badge">Click</span> or <span class="key-badge">Space</span> or <span class="key-badge">2-Finger Touch</span>
+            Steer: <span class="key-badge">Mouse</span> or <span class="key-badge">A / D</span>&nbsp;&nbsp;
+            Boost: <span class="key-badge">Click</span> or <span class="key-badge">Space</span>
         </p>
+    </div>
+
+    <!-- CREATE ROOM MODAL -->
+    <div id="create-room-modal" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:350;background:rgba(0,0,5,0.88);backdrop-filter:blur(14px);justify-content:center;align-items:center;pointer-events:auto;">
+        <div style="background:rgba(10,10,22,0.98);border:1px solid rgba(0,255,204,0.25);border-radius:20px;padding:32px;width:min(440px,92vw);display:flex;flex-direction:column;gap:20px;box-shadow:0 0 60px rgba(0,255,204,0.08);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h2 style="margin:0;color:var(--primary);font-size:1.4rem;letter-spacing:2px;">🌐 CREATE ROOM</h2>
+                <span id="close-create-modal" style="cursor:pointer;font-size:1.4rem;color:#555;padding:4px 8px;border-radius:6px;transition:color 0.15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#555'">✕</span>
+            </div>
+
+            <!-- Steps -->
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div class="room-step"><span class="step-num">1</span><span>Pick a <b>map</b> for your room</span></div>
+                <div class="room-step"><span class="step-num">2</span><span>Choose a <b>room code</b> — any letters or numbers you want</span></div>
+                <div class="room-step"><span class="step-num">3</span><span>Hit <b>Host</b> and share the code with friends</span></div>
+                <div class="room-step"><span class="step-num">4</span><span>Friends click <b>Join Room</b> and enter your code</span></div>
+            </div>
+
+            <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+
+            <!-- Map picker -->
+            <div>
+                <label style="color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:10px;">Map</label>
+                <div id="map-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+            </div>
+
+            <!-- Room code -->
+            <div>
+                <label style="color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">Room Code</label>
+                <div style="display:flex;gap:10px;">
+                    <input type="text" id="host-code-input" placeholder="e.g. SNAKE123 or homegame" maxlength="20" autocomplete="off" style="flex:1;text-transform:uppercase;">
+                    <button id="gen-code-btn" class="btn-secondary" style="width:auto;padding:10px 14px;font-size:0.85rem;white-space:nowrap;">Random</button>
+                </div>
+                <p style="color:#555;font-size:0.75rem;margin:6px 0 0 0;">Leave blank for a random code. Not case-sensitive.</p>
+            </div>
+
+            <button id="host-btn" style="font-size:1.05rem;">🚀 Host Room</button>
+        </div>
+    </div>
+
+    <!-- JOIN ROOM MODAL -->
+    <div id="join-room-modal" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:350;background:rgba(0,0,5,0.88);backdrop-filter:blur(14px);justify-content:center;align-items:center;pointer-events:auto;">
+        <div style="background:rgba(10,10,22,0.98);border:1px solid rgba(0,255,204,0.25);border-radius:20px;padding:32px;width:min(400px,92vw);display:flex;flex-direction:column;gap:18px;box-shadow:0 0 60px rgba(0,255,204,0.08);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h2 style="margin:0;color:var(--primary);font-size:1.4rem;letter-spacing:2px;">🔗 JOIN ROOM</h2>
+                <span id="close-join-modal" style="cursor:pointer;font-size:1.4rem;color:#555;padding:4px 8px;border-radius:6px;transition:color 0.15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#555'">✕</span>
+            </div>
+            <p style="margin:0;color:#888;font-size:0.9rem;line-height:1.6;">Ask the room host for their code, type it below, and jump in!</p>
+            <div>
+                <label style="color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px;">Room Code</label>
+                <input type="text" id="room-code-input" placeholder="e.g. SNAKE123" maxlength="20" autocomplete="off" style="width:100%;text-transform:uppercase;">
+            </div>
+            <button id="join-btn" style="font-size:1.05rem;">🔗 Join Room</button>
+            <p id="join-msg" style="color:var(--secondary);display:none;margin:0;text-align:center;font-size:0.85rem;"></p>
+        </div>
     </div>
 
     <!-- PAUSE SCREEN -->
@@ -270,7 +344,7 @@
         </div>
         <div id="pause-btns">
             <button id="resume-btn">▶ Resume</button>
-            <button id="quit-btn" class="btn-danger">✕ Quit</button>
+            <button id="quit-btn" class="btn-danger">✕ Exit Game</button>
         </div>
     </div>
 
@@ -1168,7 +1242,7 @@
             document.getElementById('bottom-right').style.display = 'flex';
             document.getElementById('pause-btn').style.display = 'block';
             if(SETTINGS.fps) document.getElementById('fps-counter').style.display = 'block';
-            if (isMultiplayer) { ui.rcBadge.style.display = 'block'; document.getElementById('rc-text').innerText = roomCode; document.getElementById('ping-display').style.display='block'; }
+            if (isMultiplayer) { ui.rcBadge.style.display = 'block'; document.getElementById('rc-text').innerText = roomCode; document.getElementById('ping-display').style.display='block'; startSync(); }
             state = 'PLAYING'; lastTime = performance.now(); canvas.focus(); requestAnimationFrame(gameLoop);
         }
 
@@ -1283,24 +1357,26 @@
         }
 
         function drawBackground(vw, vh) {
-            ctx.fillStyle = '#05050a'; ctx.fillRect(0, 0, width, height);
+            let m = selectedMap;
+            ctx.fillStyle = m.bg; ctx.fillRect(0, 0, width, height);
             ctx.save(); ctx.translate(width/2, height/2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-            ctx.fillStyle = 'rgba(10, 0, 15, 0.3)'; ctx.fillRect(0, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
-            ctx.fillStyle = 'rgba(0, 10, 15, 0.3)'; ctx.fillRect(-GAME.MAP_RADIUS, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
-            ctx.fillStyle = 'rgba(15, 10, 0, 0.3)'; ctx.fillRect(0, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
-            ctx.fillStyle = 'rgba(0, 15, 5, 0.3)'; ctx.fillRect(-GAME.MAP_RADIUS, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; let spacing = 100;
+            ctx.fillStyle = m.q[0]; ctx.fillRect(0, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
+            ctx.fillStyle = m.q[1]; ctx.fillRect(-GAME.MAP_RADIUS, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
+            ctx.fillStyle = m.q[2]; ctx.fillRect(0, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
+            ctx.fillStyle = m.q[3]; ctx.fillRect(-GAME.MAP_RADIUS, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
+            ctx.fillStyle = m.dot; let spacing = 100;
             let startX = Math.floor((camera.x - vw/2) / spacing) * spacing, startY = Math.floor((camera.y - vh/2) / spacing) * spacing;
             for (let x = startX; x < camera.x + vw/2; x += spacing) { for (let y = startY; y < camera.y + vh/2; y += spacing) {
                 if (distSq(x, y, 0, 0) < GAME.MAP_RADIUS**2) { ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2); ctx.fill(); }
             }}
             ctx.beginPath(); ctx.arc(0, 0, 400, 0, Math.PI*2);
-            let grad = ctx.createRadialGradient(0,0,0, 0,0,400); grad.addColorStop(0, 'rgba(0, 100, 255, 0.15)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+            let grad = ctx.createRadialGradient(0,0,0, 0,0,400); grad.addColorStop(0, m.center); grad.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = grad; ctx.fill();
+            let pulse = 0.25 + Math.sin(frameCount * 0.05) * 0.15;
             ctx.beginPath(); ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(255, 0, 0, ${0.25 + Math.sin(frameCount * 0.05) * 0.15})`; ctx.lineWidth = 20; ctx.stroke();
+            ctx.strokeStyle = m.border + pulse + ')'; ctx.lineWidth = 20; ctx.stroke();
             ctx.beginPath(); ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 5; ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 5; ctx.stroke();
             ctx.restore();
         }
 
@@ -1487,8 +1563,174 @@
         document.getElementById('fps-toggle').addEventListener('change', e => { SETTINGS.fps = e.target.checked; document.getElementById('fps-counter').style.display = SETTINGS.fps ? 'block' : 'none'; });
         document.getElementById('pq-toggle').addEventListener('change', e => SETTINGS.highQuality = e.target.checked);
 
-        document.getElementById('host-btn').addEventListener('click', () => { showMsg("Multiplayer requires Node.js backend. Play offline!", "#ffcc00"); });
-        document.getElementById('join-btn').addEventListener('click', () => { showMsg("Multiplayer requires Node.js backend. Play offline!", "#ffcc00"); });
+        // ── MAP DEFINITIONS ──────────────────────────────────────────────────────
+        const MAPS = [
+            { id:'classic',  name:'Classic',   icon:'🌑', desc:'Dark space arena',
+              bg:'#05050a', q:['rgba(10,0,15,0.3)','rgba(0,10,15,0.3)','rgba(15,10,0,0.3)','rgba(0,15,5,0.3)'],
+              center:'rgba(0,100,255,0.15)', border:'rgba(255,0,0,', dot:'rgba(255,255,255,0.05)' },
+            { id:'ocean',    name:'Ocean',      icon:'🌊', desc:'Deep water depths',
+              bg:'#020a12', q:['rgba(0,10,30,0.4)','rgba(0,20,35,0.3)','rgba(0,5,25,0.35)','rgba(0,15,40,0.3)'],
+              center:'rgba(0,150,255,0.2)',  border:'rgba(0,180,255,', dot:'rgba(0,200,255,0.06)' },
+            { id:'toxic',    name:'Toxic',      icon:'☢️', desc:'Radioactive wasteland',
+              bg:'#050a00', q:['rgba(20,30,0,0.35)','rgba(10,20,0,0.3)','rgba(5,25,0,0.4)','rgba(15,30,5,0.3)'],
+              center:'rgba(100,255,0,0.18)', border:'rgba(120,255,0,', dot:'rgba(100,255,50,0.06)' },
+            { id:'void',     name:'The Void',   icon:'🕳️', desc:'Pure darkness',
+              bg:'#000000', q:['rgba(5,0,10,0.5)','rgba(0,0,8,0.5)','rgba(8,0,5,0.5)','rgba(3,0,10,0.5)'],
+              center:'rgba(100,0,200,0.15)', border:'rgba(150,0,255,', dot:'rgba(120,0,200,0.04)' },
+        ];
+        let selectedMap = MAPS[0];
+
+        function buildMapGrid() {
+            let grid = document.getElementById('map-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            MAPS.forEach(m => {
+                let d = document.createElement('div');
+                d.className = 'map-card' + (m.id === selectedMap.id ? ' selected' : '');
+                d.innerHTML = '<span class="map-icon">' + m.icon + '</span><div class="map-name">' + m.name + '</div><div class="map-desc">' + m.desc + '</div>';
+                d.onclick = () => { selectedMap = m; buildMapGrid(); };
+                grid.appendChild(d);
+            });
+        }
+
+        function generateRoomCode() {
+            return Math.random().toString(36).substring(2, 6).toUpperCase();
+        }
+
+        function connectSocket(code, isHost) {
+            if (!window._socketAvailable || !window.io) {
+                showMsg("No server found! Run server.js first.", "#ff0055"); return;
+            }
+            try {
+                socket = io();
+                let _pingStart = 0;
+                setInterval(() => { if(socket && socket.connected) { _pingStart = performance.now(); socket.emit('ping_check'); } }, 2000);
+                socket.on('pong_check', () => {
+                    let ms = Math.round(performance.now() - _pingStart);
+                    document.getElementById('ping-display').innerText = 'Ping: ' + ms + ' ms';
+                });
+
+                socket.on('connect', () => {
+                    roomCode = code;
+                    isMultiplayer = true;
+                    let playerState = {
+                        name: ui.nameInput.value.trim() || 'Player',
+                        skin: ui.skinSelect.value,
+                        x: 0, y: 0, angle: 0, mass: 100, segments: [], alive: true
+                    };
+                    socket.emit('joinRoom', { roomCode: code, playerState });
+                    initGameEnvironment();
+                    if (!isHost) { showMsg(''); }
+                });
+
+                socket.on('connect_error', () => {
+                    showMsg("Can't reach server. Is server.js running?", "#ff0055");
+                    socket = null; isMultiplayer = false;
+                });
+
+                // Receive full room snapshot on join
+                socket.on('roomState', (room) => {
+                    for (let id in room.players) {
+                        if (id === socket.id) continue;
+                        let p = room.players[id];
+                        let remote = new Snake(p.x || 0, p.y || 0, false, p.name || 'Remote', p.skin || 'random');
+                        remote.isRemote = true; remote.remoteId = id;
+                        snakes.push(remote);
+                    }
+                });
+
+                // New player joined mid-game
+                socket.on('playerJoined', (p) => {
+                    if (snakes.find(s => s.remoteId === p.id)) return;
+                    let remote = new Snake(p.x || 0, p.y || 0, false, p.name || 'Remote', p.skin || 'random');
+                    remote.isRemote = true; remote.remoteId = p.id;
+                    snakes.push(remote);
+                });
+
+                // Remote player moved
+                socket.on('playerMoved', (p) => {
+                    let remote = snakes.find(s => s.remoteId === p.id);
+                    if (!remote || !remote.alive) return;
+                    remote.head.x = p.x; remote.head.y = p.y;
+                    remote.angle = p.angle; remote.mass = p.mass;
+                    remote.isBoosting = p.isBoosting || false;
+                    if (p.segments && p.segments.length) {
+                        while (remote.segments.length < p.segments.length) remote.segments.push({x: p.x, y: p.y});
+                        for (let i = 0; i < Math.min(remote.segments.length, p.segments.length); i++) {
+                            remote.segments[i].x = p.segments[i].x;
+                            remote.segments[i].y = p.segments[i].y;
+                        }
+                        remote.segments.length = p.segments.length;
+                    }
+                });
+
+                // Remote player died
+                socket.on('playerDied', (id) => {
+                    let remote = snakes.find(s => s.remoteId === id);
+                    if (remote) { remote.alive = false; addKillFeed('?', remote.name); }
+                });
+
+                // Remote player disconnected
+                socket.on('playerLeft', (id) => {
+                    let idx = snakes.findIndex(s => s.remoteId === id);
+                    if (idx !== -1) snakes.splice(idx, 1);
+                });
+
+            } catch(e) {
+                showMsg("Socket error: " + e.message, "#ff0055");
+            }
+        }
+
+        // Sync local player state to server every 50ms
+        function startSync() {
+            if (syncInterval) clearInterval(syncInterval);
+            syncInterval = setInterval(() => {
+                if (!socket || !isMultiplayer || !player || !player.alive) return;
+                socket.emit('updatePosition', {
+                    x: player.head.x, y: player.head.y,
+                    angle: player.angle, mass: player.mass,
+                    isBoosting: player.isBoosting,
+                    segments: player.segments.filter((_, i) => i % 3 === 0).map(s => ({x: s.x, y: s.y}))
+                });
+            }, 50);
+        }
+
+        // Modal open/close
+        document.getElementById('create-room-btn').addEventListener('click', () => {
+            buildMapGrid();
+            document.getElementById('create-room-modal').style.display = 'flex';
+        });
+        document.getElementById('close-create-modal').addEventListener('click', () => {
+            document.getElementById('create-room-modal').style.display = 'none';
+        });
+        document.getElementById('join-room-btn').addEventListener('click', () => {
+            document.getElementById('join-room-modal').style.display = 'flex';
+            document.getElementById('join-msg').style.display = 'none';
+        });
+        document.getElementById('close-join-modal').addEventListener('click', () => {
+            document.getElementById('join-room-modal').style.display = 'none';
+        });
+        document.getElementById('gen-code-btn').addEventListener('click', () => {
+            document.getElementById('host-code-input').value = generateRoomCode();
+        });
+
+        // HOST
+        document.getElementById('host-btn').addEventListener('click', () => {
+            if (!window._socketAvailable) { showMsg("Start server.js first, then host!", "#ff0055"); document.getElementById('create-room-modal').style.display='none'; return; }
+            let code = document.getElementById('host-code-input').value.trim().toUpperCase() || generateRoomCode();
+            document.getElementById('create-room-modal').style.display = 'none';
+            showMsg("Hosting room: " + code, "#00ffcc");
+            connectSocket(code, true);
+        });
+
+        // JOIN
+        document.getElementById('join-btn').addEventListener('click', () => {
+            let code = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (code.length < 1) { document.getElementById('join-msg').innerText = 'Enter a room code!'; document.getElementById('join-msg').style.display='block'; return; }
+            if (!window._socketAvailable) { document.getElementById('join-msg').innerText = "Start server.js first!"; document.getElementById('join-msg').style.display='block'; return; }
+            document.getElementById('join-room-modal').style.display = 'none';
+            connectSocket(code, false);
+        });
 
         function copyRoomCode() {
             if (roomCode) {
