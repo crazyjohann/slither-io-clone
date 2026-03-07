@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Slither.io Clone Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- socket.io stub for offline play -->
+    <script>
+        // Stub so multiplayer references don't crash when running locally
+        window.io = function() { return { emit: function(){}, on: function(){}, disconnect: function(){} }; };
+    </script>
     <style>
         :root {
             --ui-bg: rgba(15, 15, 30, 0.85);
@@ -85,42 +89,74 @@
         .setting-row input[type="range"] { flex: 1; margin-left: 15px; }
         .setting-row input[type="checkbox"] { transform: scale(1.5); margin-left: 15px; cursor: pointer; }
 
-        /* HUD */
-        #hud { position: absolute; top: 20px; left: 20px; font-size: 1.2rem; text-shadow: var(--text-glow); display: none; }
-        #hud div { margin-bottom: 5px; }
-        #fps-counter { position: absolute; top: 5px; left: 5px; font-size: 0.8rem; color: #0f0; display: none; font-family: monospace; }
-        #ping-display { font-size: 0.9rem; color: #ffcc00; display: none; }
-        
-        #room-code-badge { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border: 2px solid var(--primary); padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; font-weight: bold; z-index: 10; pointer-events: auto; display: none; text-shadow: 0 0 5px var(--primary); transition: all 0.2s; }
-        #room-code-badge:hover { background: rgba(0, 255, 204, 0.2); transform: translateX(-50%) scale(1.05); }
+        /* ── FPS / Ping ── */
+        #fps-counter { position: absolute; top: 8px; right: 8px; font-size: 0.75rem; color: #0f0; display: none; font-family: monospace; background: rgba(0,0,0,0.5); padding: 3px 7px; border-radius: 5px; pointer-events:none; z-index:20; }
+        #ping-display { font-size: 0.85rem; color: #ffcc00; display: none; margin-top: 4px; }
 
-        #leaderboard { position: absolute; top: 20px; right: 20px; width: 220px; padding: 15px; display: none; }
-        #leaderboard h3 { margin: 0 0 10px 0; text-align: center; font-size: 1.1rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        /* ── Room badge ── */
+        #room-code-badge { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border: 2px solid var(--primary); padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; font-weight: bold; z-index: 10; pointer-events: auto; display: none; text-shadow: 0 0 5px var(--primary); transition: all 0.2s; }
+        #room-code-badge:hover { background: rgba(0,255,204,0.2); transform: translateX(-50%) scale(1.05); }
+
+        /* ── HUD card (top-left) ── */
+        #hud { position: absolute; top: 20px; left: 20px; display: none; pointer-events: none; flex-direction: column; gap: 8px; }
+        #hud-card { background: rgba(10,10,22,0.82); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 18px; backdrop-filter: blur(8px); box-shadow: 0 4px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 7px; min-width: 170px; }
+        .hud-row { display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+        .hud-icon { font-size: 1.1rem; width: 22px; text-align: center; flex-shrink: 0; }
+        .hud-label { color: #777; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; }
+        .hud-val { color: #fff; font-size: 1.05rem; font-weight: bold; margin-left: auto; text-shadow: 0 0 8px rgba(255,255,255,0.3); }
+        #hud-divider { height: 1px; background: rgba(255,255,255,0.07); margin: 1px 0; }
+        #score-rank .hud-val { color: var(--primary); }
+        #score-kills .hud-val { color: var(--secondary); }
+
+        /* ── Pause button (sits below hud card, same left column) ── */
+        #pause-btn { pointer-events: auto; background: rgba(10,10,22,0.82); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 7px 14px; cursor: pointer; font-size: 0.9rem; color: #888; backdrop-filter: blur(8px); transition: all 0.15s; display: none; align-self: flex-start; letter-spacing: 0.5px; }
+        #pause-btn:hover { background: rgba(0,255,204,0.1); border-color: var(--primary); color: var(--primary); }
+
+        /* ── Leaderboard (top-right) ── */
+        #leaderboard { position: absolute; top: 20px; right: 20px; width: 200px; padding: 12px 14px; display: none; }
+        #leaderboard h3 { margin: 0 0 8px 0; text-align: center; font-size: 0.85rem; color: #666; text-transform: uppercase; letter-spacing: 2px; }
         #lb-list { list-style: none; padding: 0; margin: 0; }
-        #lb-list li { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem; }
-        .lb-player { color: var(--primary); font-weight: bold; }
-        .lb-rank { width: 35px; color: #888; }
-        .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .lb-score { font-family: monospace; }
-        
-        .rank-change { font-size: 0.8em; margin-left: 5px; animation: fadeUp 1s forwards; display: inline-block; }
+        #lb-list li { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; font-size: 0.82rem; padding: 3px 5px; border-radius: 5px; transition: background 0.2s; }
+        #lb-list li:hover { background: rgba(255,255,255,0.04); }
+        .lb-player { background: rgba(0,255,204,0.08) !important; border-left: 2px solid var(--primary); }
+        .lb-rank { width: 28px; color: #555; font-size: 0.8rem; flex-shrink: 0; }
+        .lb-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ddd; }
+        .lb-score { font-family: monospace; color: #888; font-size: 0.8rem; flex-shrink: 0; }
+        .rank-change { font-size: 0.75em; margin-left: 3px; animation: fadeUp 1s forwards; display: inline-block; }
         @keyframes fadeUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
 
-        /* Minimap & Killfeed */
-        #minimap-container { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; border-radius: 50%; background: rgba(0, 0, 0, 0.5); border: 2px solid var(--ui-border); overflow: hidden; display: none; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        /* ── Bottom-right cluster: minimap + killfeed stacked ── */
+        #bottom-right { position: absolute; bottom: 20px; right: 20px; display: none; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+        #minimap-container { width: 140px; height: 140px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.12); overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.8); pointer-events: none; flex-shrink: 0; }
         #minimap { width: 100%; height: 100%; }
-        
-        #kill-feed { position: absolute; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 5px; font-size: 0.9rem; text-shadow: 1px 1px 2px #000; }
-        .kf-item { background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; border-left: 3px solid var(--secondary); animation: slideIn 0.3s ease-out; transition: opacity 0.5s; }
-        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        #kill-feed { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 0.82rem; text-shadow: 1px 1px 2px #000; pointer-events: none; }
+        .kf-item { background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 5px; border-right: 3px solid var(--secondary); border-left: none; animation: slideInRight 0.25s ease-out; text-align: right; white-space: nowrap; }
+        @keyframes slideInRight { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-        /* Powerup HUD */
-        #powerup-hud { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; }
-        .pu-icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1.2rem; background: rgba(0,0,0,0.6); position: relative; overflow: hidden; }
-        .pu-fill { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.3); transition: height 0.1s linear; }
+        /* ── Powerup HUD (bottom-center) ── */
+        #powerup-hud { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; pointer-events: none; }
+        .pu-icon { width: 48px; height: 48px; border-radius: 50%; border: 2px solid #fff; display: flex; justify-content: center; align-items: center; font-size: 1.4rem; background: rgba(0,0,0,0.7); position: relative; overflow: hidden; flex-direction: column; }
+        .pu-fill { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.25); transition: height 0.1s linear; }
+
+        /* ── Pause screen (proper) ── */
+        #pause-screen { background: rgba(0,0,5,0.65); z-index: 150; display: none; gap: 20px; }
+        #pause-screen h1 { font-size: 4rem; color: var(--primary); text-shadow: 0 0 30px var(--primary), 0 0 60px rgba(0,255,204,0.3); letter-spacing: 6px; margin: 0 0 10px 0; }
+        #pause-stats { background: rgba(10,10,22,0.9); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 16px 40px; display: flex; gap: 40px; text-align: center; }
+        .ps-stat { display: flex; flex-direction: column; gap: 4px; }
+        .ps-stat-label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .ps-stat-val { font-size: 1.5rem; color: var(--primary); font-weight: bold; }
+        #pause-btns { display: flex; gap: 14px; }
+        #pause-btns button { width: 160px; padding: 12px; font-size: 1rem; }
 
         #controls-hint { color: #888; margin-top: 25px; font-size: 0.9rem; text-align: center; line-height: 1.5; }
         .key-badge { background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); color: white; }
+        .style-btn { padding: 10px 6px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.5); color: #ccc; cursor: pointer; text-align: center; font-size: 0.85rem; transition: all 0.15s; user-select:none; }
+        .style-btn:hover { border-color: var(--primary); color: white; background: rgba(0,255,204,0.08); }
+        .style-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(0,255,204,0.15); box-shadow: 0 0 10px rgba(0,255,204,0.3); }
+        .swatch { width: 32px; height: 32px; border-radius: 6px; border: 2px solid rgba(255,255,255,0.3); cursor: pointer; position: relative; transition: transform 0.1s; display:inline-block; }
+        .swatch:hover { transform: scale(1.15); }
+        .swatch .del { position:absolute; top:-6px; right:-6px; width:14px; height:14px; border-radius:50%; background:#ff0055; color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.1s; line-height:1; }
+        .swatch:hover .del { opacity:1; }
     </style>
 </head>
 <body>
@@ -130,25 +166,50 @@
     <div id="ui-layer">
         <div id="room-code-badge" onclick="copyRoomCode()">ROOM: <span id="rc-text"></span><span id="rc-copied" style="display:none; color:white; font-size:0.8em; margin-left:10px;">Copied!</span></div>
 
+        <!-- TOP-LEFT: Stats card -->
         <div id="hud">
-            <div id="score-length">Length: 10</div>
-            <div id="score-mass">Mass: 100</div>
-            <div id="score-kills" style="color: var(--secondary);">Kills: 0</div>
-            <div id="score-rank" style="color: var(--primary); font-weight: bold; margin-top: 10px; position:relative;">Rank: -</div>
-            <div id="ping-display">Ping: -- ms</div>
+            <div id="hud-card">
+                <div class="hud-row" id="score-length">
+                    <span class="hud-icon">📏</span>
+                    <span class="hud-label">Length</span>
+                    <span class="hud-val">10</span>
+                </div>
+                <div class="hud-row" id="score-mass">
+                    <span class="hud-icon">⚖️</span>
+                    <span class="hud-label">Mass</span>
+                    <span class="hud-val">100</span>
+                </div>
+                <div id="hud-divider"></div>
+                <div class="hud-row" id="score-kills">
+                    <span class="hud-icon">💀</span>
+                    <span class="hud-label">Kills</span>
+                    <span class="hud-val">0</span>
+                </div>
+                <div class="hud-row" id="score-rank">
+                    <span class="hud-icon">🏆</span>
+                    <span class="hud-label">Rank</span>
+                    <span class="hud-val" id="rank-val">-</span>
+                </div>
+                <div id="ping-display">Ping: -- ms</div>
+            </div>
+            <div id="pause-btn" onclick="togglePause()" title="Pause  ·  Esc">⏸ Pause</div>
         </div>
 
+        <!-- POWERUPS (bottom-center) -->
         <div id="powerup-hud"></div>
 
+        <!-- TOP-RIGHT: Leaderboard -->
         <div id="leaderboard" class="panel">
             <h3>Leaderboard</h3>
             <ul id="lb-list"></ul>
         </div>
 
-        <div id="kill-feed"></div>
-
-        <div id="minimap-container">
-            <canvas id="minimap"></canvas>
+        <!-- BOTTOM-RIGHT: minimap + killfeed stacked -->
+        <div id="bottom-right">
+            <div id="kill-feed"></div>
+            <div id="minimap-container">
+                <canvas id="minimap"></canvas>
+            </div>
         </div>
     </div>
 
@@ -201,6 +262,16 @@
     <!-- PAUSE SCREEN -->
     <div id="pause-screen">
         <h1>PAUSED</h1>
+        <div id="pause-stats">
+            <div class="ps-stat"><div class="ps-stat-label">Length</div><div class="ps-stat-val" id="ps-length">-</div></div>
+            <div class="ps-stat"><div class="ps-stat-label">Mass</div><div class="ps-stat-val" id="ps-mass">-</div></div>
+            <div class="ps-stat"><div class="ps-stat-label">Kills</div><div class="ps-stat-val" id="ps-kills">-</div></div>
+            <div class="ps-stat"><div class="ps-stat-label">Rank</div><div class="ps-stat-val" id="ps-rank">-</div></div>
+        </div>
+        <div id="pause-btns">
+            <button id="resume-btn">▶ Resume</button>
+            <button id="quit-btn" class="btn-danger">✕ Quit</button>
+        </div>
     </div>
 
     <!-- SETTINGS MODAL -->
@@ -220,6 +291,39 @@
                 <input type="checkbox" id="pq-toggle" checked>
             </div>
             <button id="close-settings" class="btn-secondary">Close</button>
+        </div>
+    </div>
+
+    <!-- CUSTOM SKIN BUILDER -->
+    <div id="skin-builder-modal" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; z-index:400; background:rgba(0,0,0,0.92); backdrop-filter:blur(12px); justify-content:center; align-items:center; flex-direction:column; pointer-events:auto;">
+        <div style="background:rgba(15,15,30,0.98); border:2px solid var(--primary); border-radius:20px; padding:30px; width:min(520px,95vw); max-height:90vh; overflow-y:auto; display:flex; flex-direction:column; gap:18px; box-sizing:border-box;">
+            <h2 style="margin:0; text-align:center; color:var(--primary); font-size:1.6rem; text-shadow:0 0 20px var(--primary);">🎨 SKIN CREATOR</h2>
+            <div>
+                <label style="color:#aaa; font-size:0.85rem; display:block; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Style</label>
+                <div id="style-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;"></div>
+            </div>
+            <div id="color-section">
+                <label style="color:#aaa; font-size:0.85rem; display:block; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Colors <span style="color:#555; font-size:0.75rem;">(add up to 8)</span></label>
+                <div id="color-swatches" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;"></div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="color" id="color-picker" value="#00ffcc" style="width:50px; height:40px; border:2px solid rgba(255,255,255,0.15); border-radius:8px; background:none; cursor:pointer; padding:2px;">
+                    <button id="add-color-btn" style="flex:1; padding:10px; font-size:1rem;">+ Add Color</button>
+                    <button id="clear-colors-btn" style="flex:0.5; padding:10px; font-size:0.9rem; background:transparent; border:2px solid #ff0055; color:#ff0055; box-shadow:none;">Clear</button>
+                </div>
+            </div>
+            <div id="style-options"></div>
+            <div>
+                <label style="color:#aaa; font-size:0.85rem; display:block; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Preview</label>
+                <canvas id="skin-preview" width="460" height="80" style="width:100%; border-radius:10px; background:#05050a; border:1px solid rgba(255,255,255,0.15);"></canvas>
+            </div>
+            <div>
+                <label style="color:#aaa; font-size:0.85rem; display:block; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Skin Name</label>
+                <input type="text" id="skin-name-input" placeholder="My Custom Skin" maxlength="20" style="width:100%;">
+            </div>
+            <div style="display:flex; gap:12px;">
+                <button id="save-skin-btn" style="flex:1;">✅ Save &amp; Use</button>
+                <button id="close-skin-builder" class="btn-secondary" style="flex:0.5;">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -342,19 +446,25 @@
         }
 
         // Auto-pause listener
-        document.addEventListener('visibilitychange', () => { 
-            if (document.hidden && state === 'PLAYING') {
-                state = 'PAUSED'; 
-                document.getElementById('pause-screen').style.display = 'flex';
-            } else if (!document.hidden && state === 'PAUSED') { 
-                state = 'PLAYING'; 
-                lastTime = performance.now(); 
-                document.getElementById('pause-screen').style.display = 'none';
-                requestAnimationFrame(gameLoop); 
-            } 
-        });
+        // visibilitychange registered below after togglePause is defined
 
-        // Secret Skin Unlocker
+        // ===== SECRET SKIN SYSTEM =====
+        let customSkinDef = null; // { style, colors, speed }
+        let skinBuilderFrame = null;
+        const SKIN_STYLES = [
+            { id:'gradient', label:'🌊 Gradient', desc:'Flowing multi-color gradient' },
+            { id:'stripes',  label:'🦓 Stripes',  desc:'Alternating color stripes' },
+            { id:'pulse',    label:'💫 Pulse',    desc:'Pulsing glow between colors' },
+            { id:'fire',     label:'🔥 Fire',     desc:'Fire-like flicker effect' },
+            { id:'neon',     label:'⚡ Neon',     desc:'Neon outline with glow' },
+            { id:'glitch',   label:'👾 Glitch',   desc:'Rapid color glitch flicker' },
+        ];
+        let sbColors = ['#00ffcc','#ff0055'];
+        let sbStyle = 'gradient';
+        let sbSpeed = 1;
+        let sbPreviewFrame = 0;
+        let sbPreviewAnim = null;
+
         function unlockSkins() {
             if (!document.getElementById('secret-unlocked')) {
                 const createOpt = (val, text, color) => { let opt = document.createElement('option'); opt.value = val; opt.text = text; opt.style.fontWeight = "bold"; opt.style.color = color; return opt; };
@@ -366,16 +476,179 @@
                 ui.skinSelect.appendChild(createOpt('rainbow', '🌈 Rainbow', '#ff00cc'));
                 let marker = document.createElement('option'); marker.id = 'secret-unlocked'; marker.style.display = 'none'; ui.skinSelect.appendChild(marker);
                 ui.skinSelect.value = "ocean";
-                showMsg("PRO SKINS UNLOCKED!", "#00ffcc");
+                showMsg("PRO SKINS UNLOCKED! Type 'secretskin' for custom skin builder!", "#00ffcc");
             }
         }
 
-        ui.nameInput.addEventListener('input', (e) => {
-            if (e.target.value.toLowerCase() === 'upgrade') {
-                unlockSkins();
-                e.target.value = ''; 
+        function openSkinBuilder() {
+            unlockSkins();
+            sbColors = ['#00ffcc','#ff0055'];
+            sbStyle = 'gradient';
+            sbSpeed = 1;
+            sbPreviewFrame = 0;
+            buildStyleGrid();
+            renderSwatches();
+            renderStyleOptions();
+            document.getElementById('skin-name-input').value = '';
+            document.getElementById('skin-builder-modal').style.display = 'flex';
+            if (sbPreviewAnim) cancelAnimationFrame(sbPreviewAnim);
+            animateSkinPreview();
+        }
+
+        function buildStyleGrid() {
+            let grid = document.getElementById('style-grid');
+            grid.innerHTML = '';
+            SKIN_STYLES.forEach(s => {
+                let d = document.createElement('div');
+                d.className = 'style-btn' + (s.id === sbStyle ? ' active' : '');
+                d.textContent = s.label;
+                d.title = s.desc;
+                d.onclick = () => { sbStyle = s.id; buildStyleGrid(); renderStyleOptions(); };
+                grid.appendChild(d);
+            });
+        }
+
+        function renderSwatches() {
+            let c = document.getElementById('color-swatches');
+            c.innerHTML = '';
+            sbColors.forEach((col, idx) => {
+                let sw = document.createElement('div');
+                sw.className = 'swatch';
+                sw.style.background = col;
+                sw.title = col;
+                let del = document.createElement('div');
+                del.className = 'del';
+                del.textContent = '×';
+                del.onclick = (e) => { e.stopPropagation(); sbColors.splice(idx,1); if(sbColors.length===0) sbColors=['#ffffff']; renderSwatches(); };
+                sw.appendChild(del);
+                c.appendChild(sw);
+            });
+        }
+
+        function renderStyleOptions() {
+            let el = document.getElementById('style-options');
+            if (sbStyle === 'gradient' || sbStyle === 'pulse' || sbStyle === 'fire') {
+                el.innerHTML = `<label style="color:#aaa;font-size:0.85rem;display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Speed</label>
+                <input type="range" id="sb-speed" min="0.2" max="5" step="0.1" value="${sbSpeed}" style="width:100%;accent-color:var(--primary);">
+                <div style="color:#888;font-size:0.8rem;margin-top:4px;">Flow speed: <span id="sb-speed-val">${sbSpeed}x</span></div>`;
+                document.getElementById('sb-speed').oninput = e => { sbSpeed = parseFloat(e.target.value); document.getElementById('sb-speed-val').textContent = sbSpeed+'x'; };
+            } else {
+                el.innerHTML = '';
             }
+        }
+
+        function getCustomColor(segIndex, totalSegs, frame, style, colors, speed) {
+            if (!colors || colors.length === 0) return '#ffffff';
+            let n = colors.length;
+            if (style === 'gradient') {
+                let pos = ((segIndex / Math.max(1, totalSegs)) + (frame * speed * 0.01)) % 1;
+                let scaled = pos * (n - 1);
+                let ci = Math.floor(scaled), t = scaled - ci;
+                let c1 = colors[ci % n], c2 = colors[(ci + 1) % n];
+                return lerpHex(c1, c2, t);
+            } else if (style === 'stripes') {
+                return colors[segIndex % n];
+            } else if (style === 'pulse') {
+                let t = (Math.sin(frame * speed * 0.05 + segIndex * 0.1) + 1) / 2;
+                let ci = Math.floor(t * (n - 1));
+                let frac = t * (n - 1) - ci;
+                return lerpHex(colors[ci % n], colors[(ci + 1) % n], frac);
+            } else if (style === 'fire') {
+                let flicker = Math.random() > 0.9 ? 1 : 0;
+                let pos = 1 - (segIndex / Math.max(1, totalSegs));
+                let fi = Math.floor(pos * (n - 1) + flicker) % n;
+                return colors[fi];
+            } else if (style === 'neon') {
+                return colors[Math.floor(frame * speed * 0.02) % n];
+            } else if (style === 'glitch') {
+                return Math.random() > 0.15 ? colors[Math.floor(Math.random() * n)] : '#ffffff';
+            }
+            return colors[0];
+        }
+
+        function lerpHex(c1, c2, t) {
+            let r1=parseInt(c1.slice(1,3),16), g1=parseInt(c1.slice(3,5),16), b1=parseInt(c1.slice(5,7),16);
+            let r2=parseInt(c2.slice(1,3),16), g2=parseInt(c2.slice(3,5),16), b2=parseInt(c2.slice(5,7),16);
+            let r=Math.round(r1+(r2-r1)*t), g=Math.round(g1+(g2-g1)*t), b=Math.round(b1+(b2-b1)*t);
+            return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+        }
+
+        function animateSkinPreview() {
+            let cv = document.getElementById('skin-preview');
+            if (!cv) return;
+            let cx = cv.getContext('2d');
+            let W = cv.width, H = cv.height;
+            cx.clearRect(0,0,W,H);
+            let segs = 28, r = 16;
+            cx.fillStyle = '#05050a'; cx.fillRect(0,0,W,H);
+            for (let i = segs-1; i >= 0; i--) {
+                let x = 30 + (i / (segs-1)) * (W - 60);
+                let y = H/2 + Math.sin((i*0.3) - sbPreviewFrame*0.04) * 18;
+                let scale = 1 - (i/segs)*0.3;
+                let col = getCustomColor(i, segs, sbPreviewFrame, sbStyle, sbColors, sbSpeed);
+                // Neon glow
+                if (sbStyle === 'neon') {
+                    cx.shadowColor = col; cx.shadowBlur = 18;
+                } else { cx.shadowBlur = 0; }
+                cx.beginPath(); cx.arc(x, y, r * scale, 0, Math.PI*2);
+                cx.fillStyle = col; cx.fill();
+                cx.strokeStyle = 'rgba(0,0,0,0.4)'; cx.lineWidth = 1.5; cx.stroke();
+            }
+            cx.shadowBlur = 0;
+            // head
+            let hx = 30 + (0/(segs-1))*(W-60), hy = H/2 + Math.sin(-sbPreviewFrame*0.04)*18;
+            cx.beginPath(); cx.arc(hx, hy, r*1.05, 0, Math.PI*2);
+            cx.fillStyle = getCustomColor(0, segs, sbPreviewFrame, sbStyle, sbColors, sbSpeed);
+            cx.fill(); cx.stroke();
+            // eyes
+            let ea = 0, eo = r*0.5;
+            cx.fillStyle='#fff';
+            cx.beginPath(); cx.arc(hx+Math.cos(ea-0.4)*eo, hy+Math.sin(ea-0.4)*eo, r*0.3, 0, Math.PI*2); cx.fill();
+            cx.beginPath(); cx.arc(hx+Math.cos(ea+0.4)*eo, hy+Math.sin(ea+0.4)*eo, r*0.3, 0, Math.PI*2); cx.fill();
+            cx.fillStyle='#000';
+            cx.beginPath(); cx.arc(hx+Math.cos(ea-0.4)*eo+r*0.08, hy+Math.sin(ea-0.4)*eo, r*0.15, 0, Math.PI*2); cx.fill();
+            cx.beginPath(); cx.arc(hx+Math.cos(ea+0.4)*eo+r*0.08, hy+Math.sin(ea+0.4)*eo, r*0.15, 0, Math.PI*2); cx.fill();
+
+            sbPreviewFrame++;
+            sbPreviewAnim = requestAnimationFrame(animateSkinPreview);
+        }
+
+        document.getElementById('add-color-btn').onclick = () => {
+            if (sbColors.length < 8) {
+                sbColors.push(document.getElementById('color-picker').value);
+                renderSwatches();
+            } else { alert('Max 8 colors!'); }
+        };
+        document.getElementById('clear-colors-btn').onclick = () => { sbColors = ['#ffffff']; renderSwatches(); };
+        document.getElementById('close-skin-builder').onclick = () => {
+            document.getElementById('skin-builder-modal').style.display = 'none';
+            if (sbPreviewAnim) { cancelAnimationFrame(sbPreviewAnim); sbPreviewAnim = null; }
+        };
+        document.getElementById('save-skin-btn').onclick = () => {
+            let skinName = document.getElementById('skin-name-input').value.trim() || 'My Skin';
+            customSkinDef = { style: sbStyle, colors: [...sbColors], speed: sbSpeed };
+            // Add or update option
+            let existing = document.getElementById('custom-skin-opt');
+            if (!existing) {
+                let opt = document.createElement('option'); opt.id = 'custom-skin-opt';
+                opt.value = 'custom'; opt.text = '✏️ ' + skinName;
+                opt.style.color = '#ffcc00'; opt.style.fontWeight = 'bold';
+                ui.skinSelect.appendChild(opt);
+            } else {
+                existing.text = '✏️ ' + skinName;
+            }
+            ui.skinSelect.value = 'custom';
+            document.getElementById('skin-builder-modal').style.display = 'none';
+            if (sbPreviewAnim) { cancelAnimationFrame(sbPreviewAnim); sbPreviewAnim = null; }
+            showMsg('CUSTOM SKIN SAVED!', '#ffcc00');
+        };
+
+        ui.nameInput.addEventListener('input', (e) => {
+            let v = e.target.value.toLowerCase();
+            if (v === 'upgrade') { unlockSkins(); e.target.value = ''; }
+            if (v === 'secretskin') { openSkinBuilder(); e.target.value = ''; }
         });
+
 
         // --- CLASSES ---
         class Orb {
@@ -406,7 +679,7 @@
                     if(flee) {
                         this.x += fx * 0.8; this.y += fy * 0.8;
                         let dSq = distSq(0,0,this.x,this.y);
-                        if(dSq > GAME.MAP_RADIUS**2) { this.x *= -0.98; this.y *= -0.98; } // Wrap around
+                        if(dSq > GAME.MAP_RADIUS**2) { this.x *= -0.98; this.y *= -0.98; }
                     }
                 }
             }
@@ -465,7 +738,6 @@
                 this.trail = [];
                 
                 // Bot AI specific state
-                const personalities = ['aggressive', 'cautious', 'balanced'];
                 let r = Math.random(); this.personality = r < 0.3 ? 'aggressive' : (r < 0.6 ? 'cautious' : 'balanced');
                 this.botState = 'WANDER'; 
                 this.botTarget = null; 
@@ -513,10 +785,9 @@
                 while(diff < -Math.PI) diff += Math.PI*2; while(diff > Math.PI) diff -= Math.PI*2;
                 let currentTurn = this.isPlayer ? GAME.TURN_SPEED : GAME.TURN_SPEED * 0.7;
                 this.angularVel += diff * 0.1; 
-                this.angularVel *= 0.7; // Spring & Friction
-                if (!this.isPlayer) this.angularVel *= 0.3; // Dampen bot momentum more aggressively
+                this.angularVel *= 0.7;
+                if (!this.isPlayer) this.angularVel *= 0.3;
                 
-                // Clamp angular velocity
                 this.angularVel = Math.max(-currentTurn, Math.min(currentTurn, this.angularVel));
                 this.angle += this.angularVel;
 
@@ -551,7 +822,6 @@
 
                 let targetSpacing = this.radius * GAME.SEGMENT_SPACING;
                 
-                // Init new segments at exact position of last segment
                 while (this.segments.length < this.targetLength) {
                     let last = this.segments[this.segments.length - 1];
                     this.segments.push({ x: last.x, y: last.y });
@@ -583,7 +853,7 @@
                 this.botTimer--;
                 this.stateHoldTimer--;
 
-                // PRIORITY 1: BOUNDARY_FLEE (Overrides everything)
+                // PRIORITY 1: BOUNDARY_FLEE
                 if (distSq(0, 0, headX, headY) > (GAME.MAP_RADIUS - 600) ** 2) {
                     this.botState = 'BOUNDARY_FLEE';
                     this.targetAngle = Math.atan2(-headY, -headX);
@@ -591,7 +861,7 @@
                     return;
                 }
 
-                // PRIORITY 2: EVADE (Overrides all below)
+                // PRIORITY 2: EVADE
                 let repX = 0, repY = 0, repelling = false;
                 let evadeRadius = this.personality === 'cautious' ? 120 : (this.personality === 'aggressive' ? 60 : 80);
                 let minEvadeDist = Infinity;
@@ -604,7 +874,7 @@
                         if (dSq < evadeRadius * evadeRadius) {
                             let d = Math.sqrt(dSq);
                             let weight = 1 / Math.max(1, d);
-                            repX += (headX - seg.x) * weight; // Push away
+                            repX += (headX - seg.x) * weight;
                             repY += (headY - seg.y) * weight;
                             repelling = true;
                             if (d < minEvadeDist) minEvadeDist = d;
@@ -614,9 +884,7 @@
                 
                 if (repelling) {
                     this.botState = 'EVADE';
-                    // Apply random noise ±0.3 rad to escape angle
                     this.targetAngle = Math.atan2(repY, repX) + rand(-0.3, 0.3);
-                    
                     if (this.personality === 'cautious' && this.length > GAME.MIN_BOOST_LENGTH) {
                         this.isBoosting = true;
                     } else if (this.personality === 'aggressive') {
@@ -627,7 +895,6 @@
                     return;
                 }
 
-                // Check if current target is invalid to force state re-evaluation
                 let targetInvalid = false;
                 if (this.botState === 'HUNT' && (!this.botTarget || !this.botTarget.alive)) targetInvalid = true;
                 if ((this.botState === 'FEED' || this.botState === 'BOOST_CHASE') && (!this.botTarget || !orbs.includes(this.botTarget))) targetInvalid = true;
@@ -635,12 +902,11 @@
 
                 if (targetInvalid || this.botTimer <= 0) this.stateHoldTimer = 0;
 
-                // PRIORITY 3-6: Evaluate new state if hold timer expired
                 if (this.stateHoldTimer <= 0) {
                     let nextState = 'WANDER';
                     let nextTarget = null;
 
-                    // 3. HUNT (Highest available priority after evade)
+                    // HUNT
                     let bestHuntScore = -1;
                     for (let s of snakes) {
                         if (s === this || !s.alive) continue;
@@ -648,16 +914,12 @@
                             let dSq = distSq(headX, headY, s.head.x, s.head.y);
                             if (dSq < 600 * 600) {
                                 let score = s.mass / Math.max(1, Math.sqrt(dSq));
-                                if (score > bestHuntScore) {
-                                    bestHuntScore = score;
-                                    nextState = 'HUNT';
-                                    nextTarget = s;
-                                }
+                                if (score > bestHuntScore) { bestHuntScore = score; nextState = 'HUNT'; nextTarget = s; }
                             }
                         }
                     }
 
-                    // 4. Powerup Seek (if not hunting)
+                    // SEEK_POWERUP
                     if (nextState === 'WANDER') {
                         let bestPuScore = -1;
                         for (let p of powerups) {
@@ -666,140 +928,87 @@
                                 let score = 1000 / Math.max(1, Math.sqrt(dSq));
                                 if (this.personality === 'aggressive' && p.type === 'speed') score *= 2;
                                 if (this.personality === 'cautious' && p.type === 'shield') score *= 2;
-                                if (score > bestPuScore) {
-                                    bestPuScore = score;
-                                    nextState = 'SEEK_POWERUP';
-                                    nextTarget = p;
-                                }
+                                if (score > bestPuScore) { bestPuScore = score; nextState = 'SEEK_POWERUP'; nextTarget = p; }
                             }
                         }
                     }
 
-                    // 5 & 6. Food Cluster (BOOST_CHASE) or Single Food (FEED)
+                    // FEED / BOOST_CHASE
                     if (nextState === 'WANDER') {
-                        let bestFood = null;
-                        let bestScore = -Infinity;
-                        let clusterCount = 0;
-
+                        let bestFood = null, bestScore = -Infinity, clusterCount = 0;
                         for (let o of orbs) {
                             let dSq = distSq(headX, headY, o.x, o.y);
-                            if (dSq < 90000) { // 300px
-                                // Ignore own boost drops (circular chase avoidance)
-                                if (o.color === this.color && dSq < 2500) continue; 
-
+                            if (dSq < 90000) {
+                                if (o.color === this.color && dSq < 2500) continue;
                                 let nearby = 0;
-                                for (let o2 of orbs) {
-                                    if (o !== o2 && distSq(o.x, o.y, o2.x, o2.y) < 10000) nearby++; // 100px radius
-                                }
-                                
+                                for (let o2 of orbs) { if (o !== o2 && distSq(o.x, o.y, o2.x, o2.y) < 10000) nearby++; }
                                 let score = o.mass / (Math.sqrt(dSq) + 1) + nearby * 2;
-                                if (score > bestScore) {
-                                    bestScore = score;
-                                    bestFood = o;
-                                    clusterCount = nearby;
-                                }
+                                if (score > bestScore) { bestScore = score; bestFood = o; clusterCount = nearby; }
                             }
                         }
-
                         if (bestFood) {
                             nextTarget = bestFood;
-                            if (clusterCount >= 3 && this.personality !== 'cautious') {
-                                nextState = 'BOOST_CHASE';
-                            } else {
-                                nextState = 'FEED';
-                            }
+                            nextState = (clusterCount >= 3 && this.personality !== 'cautious') ? 'BOOST_CHASE' : 'FEED';
                         }
                     }
 
                     this.botState = nextState;
                     this.botTarget = nextTarget;
-                    this.stateHoldTimer = 20; // Minimum hold time
-                    
-                    if (nextState === 'WANDER') {
-                        this.botTimer = Math.floor(rand(30, 90));
-                        this.stateHoldTimer = this.botTimer;
-                    }
+                    this.stateHoldTimer = 20;
+                    if (nextState === 'WANDER') { this.botTimer = Math.floor(rand(30, 90)); this.stateHoldTimer = this.botTimer; }
                 }
 
-                // EXECUTE CURRENT STATE
+                // EXECUTE STATE
                 if (this.botState === 'HUNT' && this.botTarget) {
                     let target = this.botTarget;
                     let leadX = target.head.x + Math.cos(target.angle) * (target.speed * 25);
                     let leadY = target.head.y + Math.sin(target.angle) * (target.speed * 25);
-                    
-                    let vecX = target.head.x - headX;
-                    let vecY = target.head.y - headY;
+                    let vecX = target.head.x - headX, vecY = target.head.y - headY;
                     let dotProduct = vecX * Math.cos(target.angle) + vecY * Math.sin(target.angle);
-                    
-                    // If dot product is negative, bot is ahead of target's movement direction
-                    if (dotProduct < 0) {
-                        this.targetAngle = target.angle + Math.PI / 2; // COIL
-                    } else {
-                        this.targetAngle = Math.atan2(leadY - headY, leadX - headX);
-                    }
-                    
+                    if (dotProduct < 0) { this.targetAngle = target.angle + Math.PI / 2; }
+                    else { this.targetAngle = Math.atan2(leadY - headY, leadX - headX); }
                     let distToLead = Math.sqrt(distSq(headX, headY, leadX, leadY));
-                    if (this.personality === 'aggressive' && this.length > GAME.MIN_BOOST_LENGTH + 3) {
-                        this.isBoosting = true;
-                    } else if (this.personality === 'balanced' && distToLead > 200 && this.length > GAME.MIN_BOOST_LENGTH) {
-                        this.isBoosting = true;
-                    } else {
-                        this.isBoosting = false;
-                    }
+                    if (this.personality === 'aggressive' && this.length > GAME.MIN_BOOST_LENGTH + 3) { this.isBoosting = true; }
+                    else if (this.personality === 'balanced' && distToLead > 200 && this.length > GAME.MIN_BOOST_LENGTH) { this.isBoosting = true; }
+                    else { this.isBoosting = false; }
 
                 } else if (this.botState === 'SEEK_POWERUP' && this.botTarget) {
                     this.targetAngle = Math.atan2(this.botTarget.y - headY, this.botTarget.x - headX);
                     this.isBoosting = false;
 
                 } else if ((this.botState === 'BOOST_CHASE' || this.botState === 'FEED') && this.botTarget) {
-                    
                     if (this.botState === 'BOOST_CHASE') {
                         let clearPath = true;
-                        // Raycast 5 sample points to check for safe boosting
                         for (let i = 1; i <= 5; i++) {
                             let sx = headX + (this.botTarget.x - headX) * (i / 5);
                             let sy = headY + (this.botTarget.y - headY) * (i / 5);
                             for (let s of snakes) {
                                 if (s === this || !s.alive) continue;
                                 for (let j = 0; j < s.segments.length; j += 4) {
-                                    if (distSq(sx, sy, s.segments[j].x, s.segments[j].y) < 3600) { // 60px
-                                        clearPath = false; break;
-                                    }
+                                    if (distSq(sx, sy, s.segments[j].x, s.segments[j].y) < 3600) { clearPath = false; break; }
                                 }
                                 if (!clearPath) break;
                             }
                             if (!clearPath) break;
                         }
-                        
-                        if (!clearPath) {
-                            this.botState = 'FEED'; // Path blocked, fallback to safe feeding
-                            this.isBoosting = false;
-                        }
+                        if (!clearPath) { this.botState = 'FEED'; this.isBoosting = false; }
                     }
-                    
                     this.targetAngle = Math.atan2(this.botTarget.y - headY, this.botTarget.x - headX);
-                    
                     if (this.botState === 'BOOST_CHASE' && this.length > GAME.MIN_BOOST_LENGTH) {
                         let diff = Math.abs(lerpAngle(this.angle, this.targetAngle, 1) - this.angle);
-                        while (diff > Math.PI) diff -= Math.PI * 2; 
-                        while (diff < -Math.PI) diff += Math.PI * 2;
-                        this.isBoosting = Math.abs(diff) < 0.5; // Only boost if generally facing the target
-                    } else {
-                        this.isBoosting = false;
-                    }
+                        while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
+                        this.isBoosting = Math.abs(diff) < 0.5;
+                    } else { this.isBoosting = false; }
 
                 } else if (this.botState === 'WANDER') {
                     if (this.wanderAngle === undefined) this.wanderAngle = this.angle;
                     this.wanderAngle += rand(-0.08, 0.08);
-                    
                     let distToCenter = Math.sqrt(distSq(0, 0, headX, headY));
                     if (distToCenter > 1500) {
                         let angleToCenter = Math.atan2(-headY, -headX);
-                        this.targetAngle = lerpAngle(this.wanderAngle, angleToCenter, 0.4); // Bias 40% to center
+                        this.targetAngle = lerpAngle(this.wanderAngle, angleToCenter, 0.4);
                         this.wanderAngle = this.targetAngle;
-                    } else {
-                        this.targetAngle = this.wanderAngle;
-                    }
+                    } else { this.targetAngle = this.wanderAngle; }
                     this.isBoosting = false;
                 }
             }
@@ -809,7 +1018,6 @@
                 let alphaRamp = this.spawnTimer > 0 ? 1 - (this.spawnTimer / 60) : 1;
                 ctx.globalAlpha = (isGhost ? 0.4 : 1) * alphaRamp;
                 
-                // Trail
                 if (this.isBoosting && SETTINGS.highQuality) {
                     for(let i=0; i<this.trail.length; i++) {
                         ctx.globalAlpha = (0.3 - i*0.1) * alphaRamp; ctx.beginPath(); ctx.arc(this.trail[i].x, this.trail[i].y, this.radius, 0, Math.PI*2);
@@ -819,10 +1027,7 @@
                 }
 
                 ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
-                
-                if (this.isBoosting && SETTINGS.highQuality) {
-                    ctx.shadowColor = this.getColor(0); ctx.shadowBlur = 15;
-                }
+                if (this.isBoosting && SETTINGS.highQuality) { ctx.shadowColor = this.getColor(0); ctx.shadowBlur = 15; }
 
                 for (let i = this.segments.length - 1; i >= 0; i--) {
                     let seg = this.segments[i];
@@ -831,16 +1036,13 @@
                     ctx.fillStyle = this.getColor(i); ctx.fill(); ctx.stroke();
                 }
 
-                // Player Top 3 Glow
                 let isTop3 = this.isPlayer && snakes.filter(s=>s.alive).indexOf(this) < 3;
                 if (isTop3) { ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 20; }
 
-                // Head
                 ctx.beginPath(); ctx.arc(this.head.x, this.head.y, this.radius * 1.05, 0, Math.PI * 2);
                 ctx.fillStyle = this.getColor(0); ctx.fill(); ctx.stroke();
-                ctx.shadowBlur = 0; // Reset shadow
+                ctx.shadowBlur = 0;
 
-                // Eyes
                 let eyeOffset = this.radius * 0.5, eyeAngle = Math.PI * 0.25;
                 ctx.fillStyle = '#fff';
                 let lx = this.head.x + Math.cos(this.angle - eyeAngle) * eyeOffset, ly = this.head.y + Math.sin(this.angle - eyeAngle) * eyeOffset;
@@ -853,7 +1055,6 @@
                 ctx.beginPath(); ctx.arc(lx + px, ly + py, this.radius * 0.15, 0, Math.PI*2); ctx.fill();
                 ctx.beginPath(); ctx.arc(rx + px, ry + py, this.radius * 0.15, 0, Math.PI*2); ctx.fill();
 
-                // Shield
                 if (this.powerups.shield > 0) {
                     ctx.beginPath(); ctx.arc(this.head.x, this.head.y, this.radius * 1.5, 0, Math.PI*2);
                     ctx.strokeStyle = 'rgba(0, 136, 255, 0.8)'; ctx.lineWidth = 3; ctx.stroke();
@@ -873,7 +1074,6 @@
                     ctx.strokeText(this.name, this.head.x, this.head.y - this.radius - 12);
                     ctx.fillStyle = 'rgba(255,255,255,0.95)'; 
                     ctx.fillText(this.name, this.head.x, this.head.y - this.radius - 12);
-                    
                     if (!this.isPlayer) {
                         let bw = Math.min(60, this.mass / 10);
                         ctx.fillStyle = this.color;
@@ -892,6 +1092,9 @@
                 if (this.skin === 'void') return '#111111';
                 if (this.skin === 'rainbow') return `hsl(${(frameCount * 3 + i * 5) % 360}, 100%, 50%)`;
                 if (this.skin === 'zebra') return (i % 2 === 0) ? '#ffffff' : '#000000';
+                if (this.skin === 'custom' && customSkinDef) {
+                    return getCustomColor(i, this.segments.length, frameCount, customSkinDef.style, customSkinDef.colors, customSkinDef.speed);
+                }
                 return this.color;
             }
 
@@ -932,9 +1135,7 @@
         // --- GAME LOGIC ---
         function spawnOrb(type) {
             let angle = rand(0, Math.PI * 2), distToCenter = rand(0, GAME.MAP_RADIUS - 50);
-            let x = Math.cos(angle) * distToCenter;
-            let y = Math.sin(angle) * distToCenter;
-            orbs.push(new Orb(x, y, type));
+            orbs.push(new Orb(Math.cos(angle) * distToCenter, Math.sin(angle) * distToCenter, type));
         }
 
         function spawnBot() {
@@ -958,21 +1159,20 @@
             player = new Snake(0, 0, true, ui.nameInput.value.trim() || "Player", ui.skinSelect.value);
             snakes.push(player); camera.x = player.head.x; camera.y = player.head.y;
 
-            // Orb Clusters & Initial
             for (let i = 0; i < GAME.MAX_ORBS / 2; i++) spawnOrb(0);
-            for(let i=0; i < 8; i++) spawnOrb(3); // Fleeing
+            for(let i=0; i < 8; i++) spawnOrb(3);
             for(let c=0; c < 15; c++) { let cx = rand(-3000, 3000), cy = rand(-3000, 3000); for(let o=0; o<10; o++) { let ox = cx + rand(-50,50), oy = cy + rand(-50,50); orbs.push(new Orb(ox, oy, 1)); } }
 
             ui.overlay.style.display = 'none'; ui.ds.style.display = 'none'; ui.msg.style.display = 'none';
-            ui.hud.style.display = 'block'; ui.leaderboard.style.display = 'block'; ui.minimap.style.display = 'block';
+            ui.hud.style.display = 'flex'; ui.leaderboard.style.display = 'block';
+            document.getElementById('bottom-right').style.display = 'flex';
+            document.getElementById('pause-btn').style.display = 'block';
             if(SETTINGS.fps) document.getElementById('fps-counter').style.display = 'block';
-            
             if (isMultiplayer) { ui.rcBadge.style.display = 'block'; document.getElementById('rc-text').innerText = roomCode; document.getElementById('ping-display').style.display='block'; }
             state = 'PLAYING'; lastTime = performance.now(); canvas.focus(); requestAnimationFrame(gameLoop);
         }
 
         function checkCollisions() {
-            // Orbs
             for (let i = orbs.length - 1; i >= 0; i--) {
                 let o = orbs[i]; let collected = false;
                 for (let s of snakes) {
@@ -981,13 +1181,10 @@
                     if (distSq(s.head.x, s.head.y, o.x, o.y) < pullDist**2) {
                         s.mass += o.mass; collected = true;
                         if(s.isPlayer) {
-                            AudioSys.play('eat');
-                            s.orbsEaten++;
-                            
+                            AudioSys.play('eat'); s.orbsEaten++;
                             let sx = (o.x - camera.x) * camera.zoom + width/2;
                             let sy = (o.y - camera.y) * camera.zoom + height/2;
                             addFloatingText(sx, sy, `+${Math.floor(o.mass)}`, o.color);
-                            
                             if(o.killer && o.killer !== s.name) {
                                 let psx = (s.head.x - camera.x) * camera.zoom + width/2;
                                 let psy = (s.head.y - camera.y) * camera.zoom + height/2;
@@ -1000,7 +1197,6 @@
                 if (collected) orbs.splice(i, 1);
             }
 
-            // Powerups
             for(let i = powerups.length - 1; i >= 0; i--) {
                 let p = powerups[i];
                 if(p.life <= 0) { powerups.splice(i,1); continue; }
@@ -1020,16 +1216,11 @@
                 }
             }
 
-            // Snakes
             for (let i=0; i<snakes.length; i++) {
                 let s1 = snakes[i]; if (!s1.alive || s1.powerups.ghost > 0) continue;
                 for (let j=i+1; j<snakes.length; j++) {
                     let s2 = snakes[j]; if (!s2.alive || s2.powerups.ghost > 0 || (s1.isRemote && s2.isRemote)) continue;
-                    
-                    // Box check
                     if (Math.abs(s1.head.x - s2.head.x) > Math.max(s1.targetLength, s2.targetLength) * 15 + 100) continue;
-                    
-                    // Head to Head Fix
                     let headDistSq = distSq(s1.head.x, s1.head.y, s2.head.x, s2.head.y);
                     if (headDistSq < (s1.radius + s2.radius)**2) {
                         if (s1.powerups.shield > 0 && s2.powerups.shield === 0) s2.die(s1);
@@ -1039,8 +1230,6 @@
                         else { s1.die(); s2.die(); }
                         continue;
                     }
-
-                    // Body hits
                     let hit1 = false, hit2 = false;
                     for(let k=2; k<s2.segments.length; k+=2) { if (distSq(s1.head.x, s1.head.y, s2.segments[k].x, s2.segments[k].y) < (s1.radius * 0.8 + s2.radius * 0.8)**2) { s1.die(s2); hit1 = true; break; } }
                     if(!hit1) { for(let k=2; k<s1.segments.length; k+=2) { if (distSq(s2.head.x, s2.head.y, s1.segments[k].x, s1.segments[k].y) < (s2.radius * 0.8 + s1.radius * 0.8)**2) { s2.die(s1); hit2 = true; break; } } }
@@ -1048,34 +1237,32 @@
             }
         }
 
-        // --- RENDERING ---
         function updateUI() {
             if (!player || !player.alive) return;
-            document.getElementById('score-length').innerText = `Length: ${player.length}`;
-            document.getElementById('score-mass').innerText = `Mass: ${Math.floor(player.mass)}`;
-            document.getElementById('score-kills').innerText = `Kills: ${player.kills}`;
+            document.querySelector('#score-length .hud-val').innerText = player.length;
+            document.querySelector('#score-mass .hud-val').innerText = Math.floor(player.mass);
+            document.querySelector('#score-kills .hud-val').innerText = player.kills;
 
             if (frameCount % 30 === 0) {
                 snakes.sort((a, b) => b.mass - a.mass);
                 let html = '', pRank = -1, aliveSnakes = snakes.filter(s => s.alive); 
-                
                 snakes.forEach(s => s.isNumberOne = false);
                 if (aliveSnakes.length > 0) aliveSnakes[0].isNumberOne = true;
-
+                const medals = ['🥇','🥈','🥉'];
                 for (let i = 0; i < Math.min(10, aliveSnakes.length); i++) {
                     let s = aliveSnakes[i]; let isP = s === player; if (isP) pRank = i + 1;
-                    html += `<li class="${isP ? 'lb-player' : ''}"><span class="lb-rank">#${i+1}</span><span class="lb-name">${s.name}</span><span class="lb-score">${Math.floor(s.mass)}</span></li>`;
+                    let rankLabel = i < 3 ? medals[i] : `#${i+1}`;
+                    html += `<li class="${isP ? 'lb-player' : ''}"><span class="lb-rank">${rankLabel}</span><span class="lb-name">${s.name}</span><span class="lb-score">${Math.floor(s.mass)}</span></li>`;
                 }
                 document.getElementById('lb-list').innerHTML = html;
                 if (pRank === -1) pRank = aliveSnakes.indexOf(player) + 1;
-                
-                let rankEl = document.getElementById('score-rank');
-                let rankText = `Rank: #${pRank} of ${aliveSnakes.length}`;
+                let rankValEl = document.getElementById('rank-val');
+                let rankText = `#${pRank}`;
                 if (lastRank !== -1 && pRank !== lastRank) {
                     let diff = lastRank - pRank;
                     rankText += `<span class="rank-change" style="color:${diff>0?'#0f0':'#f00'}">${diff>0?'+':''}${diff}</span>`;
                 }
-                rankEl.innerHTML = rankText; lastRank = pRank;
+                rankValEl.innerHTML = rankText; lastRank = pRank;
             }
 
             let now = performance.now();
@@ -1098,36 +1285,22 @@
         function drawBackground(vw, vh) {
             ctx.fillStyle = '#05050a'; ctx.fillRect(0, 0, width, height);
             ctx.save(); ctx.translate(width/2, height/2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-            
-            // Map Quadrants
             ctx.fillStyle = 'rgba(10, 0, 15, 0.3)'; ctx.fillRect(0, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
             ctx.fillStyle = 'rgba(0, 10, 15, 0.3)'; ctx.fillRect(-GAME.MAP_RADIUS, 0, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
             ctx.fillStyle = 'rgba(15, 10, 0, 0.3)'; ctx.fillRect(0, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
             ctx.fillStyle = 'rgba(0, 15, 5, 0.3)'; ctx.fillRect(-GAME.MAP_RADIUS, -GAME.MAP_RADIUS, GAME.MAP_RADIUS, GAME.MAP_RADIUS);
-
-            // Grid
             ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; let spacing = 100;
             let startX = Math.floor((camera.x - vw/2) / spacing) * spacing, startY = Math.floor((camera.y - vh/2) / spacing) * spacing;
             for (let x = startX; x < camera.x + vw/2; x += spacing) { for (let y = startY; y < camera.y + vh/2; y += spacing) {
                 if (distSq(x, y, 0, 0) < GAME.MAP_RADIUS**2) { ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2); ctx.fill(); }
             }}
-
-            // Center Zone Bonus Area
             ctx.beginPath(); ctx.arc(0, 0, 400, 0, Math.PI*2);
             let grad = ctx.createRadialGradient(0,0,0, 0,0,400); grad.addColorStop(0, 'rgba(0, 100, 255, 0.15)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = grad; ctx.fill();
-
-            // Boundary & Pulsing Danger Ring
             ctx.beginPath(); ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(255, 0, 0, ${0.25 + Math.sin(frameCount * 0.05) * 0.15})`; 
-            ctx.lineWidth = 20; 
-            ctx.stroke();
-
+            ctx.strokeStyle = `rgba(255, 0, 0, ${0.25 + Math.sin(frameCount * 0.05) * 0.15})`; ctx.lineWidth = 20; ctx.stroke();
             ctx.beginPath(); ctx.arc(0, 0, GAME.MAP_RADIUS, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; 
-            ctx.lineWidth = 5; 
-            ctx.stroke();
-            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 5; ctx.stroke();
             ctx.restore();
         }
 
@@ -1136,7 +1309,6 @@
             let dt = timestamp - lastTime; lastTime = timestamp; frameCount++;
             if(SETTINGS.fps && frameCount%10===0) document.getElementById('fps-counter').innerText = Math.floor(1000/dt) + " FPS";
 
-            // Spawning
             if (frameCount % 10 === 0 && orbs.length < GAME.MAX_ORBS) {
                 spawnOrb(0);
                 if (player && player.alive && distSq(0,0,player.head.x,player.head.y) < 40000) spawnOrb(0);
@@ -1156,7 +1328,6 @@
                 let lerpSpeed = player.isBoosting ? 0.18 : 0.08;
                 camera.x += (player.head.x - camera.x) * lerpSpeed; 
                 camera.y += (player.head.y - camera.y) * lerpSpeed; 
-                
                 let massZoom = Math.max(0.35, 1 - Math.log10(Math.max(50, player.mass) / 50) * 0.25);
                 camera.targetZoom = player.isBoosting ? massZoom * 0.92 : massZoom;
                 camera.zoom += (camera.targetZoom - camera.zoom) * 0.05;
@@ -1169,7 +1340,6 @@
             if (screenShake > 0) { ctx.translate(rand(-3,3), rand(-3,3)); screenShake--; }
             ctx.translate(width/2, height/2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
             
-            // True Batch Rendering for Orbs
             const orbBatches = {};
             let pulse = Math.sin(frameCount * 0.05) * 0.15;
             for (let o of orbs) {
@@ -1177,26 +1347,14 @@
                 if (!orbBatches[o.color]) orbBatches[o.color] = [];
                 orbBatches[o.color].push(o);
             }
-            
             for (let color in orbBatches) {
                 ctx.fillStyle = color; ctx.beginPath();
-                for (let o of orbBatches[color]) {
-                    let r = o.radius * (1 + pulse);
-                    ctx.moveTo(o.x + r, o.y); ctx.arc(o.x, o.y, r, 0, Math.PI*2);
-                }
+                for (let o of orbBatches[color]) { let r = o.radius * (1 + pulse); ctx.moveTo(o.x + r, o.y); ctx.arc(o.x, o.y, r, 0, Math.PI*2); }
                 ctx.fill();
             }
-
-            // Draw 3D highlights for Orbs
             if (SETTINGS.highQuality) {
                 ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath();
-                for (let color in orbBatches) {
-                    for (let o of orbBatches[color]) {
-                        let r = o.radius * (1 + pulse);
-                        let hx = o.x - r * 0.3, hy = o.y - r * 0.3, hr = Math.max(1, r * 0.25);
-                        ctx.moveTo(hx + hr, hy); ctx.arc(hx, hy, hr, 0, Math.PI*2);
-                    }
-                }
+                for (let color in orbBatches) { for (let o of orbBatches[color]) { let r = o.radius*(1+pulse), hx=o.x-r*0.3, hy=o.y-r*0.3, hr=Math.max(1,r*0.25); ctx.moveTo(hx+hr,hy); ctx.arc(hx,hy,hr,0,Math.PI*2); } }
                 ctx.fill();
             }
 
@@ -1204,15 +1362,12 @@
             if(SETTINGS.highQuality) { for(let p of particles) p.draw(ctx); }
             [...snakes].sort((a,b) => a.mass - b.mass).forEach(s => s.draw(ctx));
             
-            ctx.restore(); // Drop back to screen space for floating UI text
+            ctx.restore();
 
-            // Screen-space floating texts
             for(let i=floatingTexts.length-1; i>=0; i--) {
                 let ft = floatingTexts[i];
-                ctx.globalAlpha = ft.life / ft.maxLife; 
-                ctx.fillStyle = ft.color; 
-                ctx.font = "bold 20px 'Silkscreen', Arial"; 
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.globalAlpha = ft.life / ft.maxLife; ctx.fillStyle = ft.color; 
+                ctx.font = "bold 20px 'Silkscreen', Arial"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(ft.text, ft.x, ft.y - (ft.maxLife - ft.life));
                 ft.life--; if(ft.life <= 0) floatingTexts.splice(i,1);
             }
@@ -1241,16 +1396,14 @@
 
         window.addEventListener('keydown', e => {
             AudioSys.init();
+            if (e.key === 'Escape') { if (state === 'PLAYING' || state === 'PAUSED') { e.preventDefault(); if(typeof togglePause === 'function') togglePause(); } return; }
             if (['ArrowLeft','a','A'].includes(e.key)) { keys.left = true; useMouse = false; }
             if (['ArrowRight','d','D'].includes(e.key)) { keys.right = true; useMouse = false; }
             if ([' ','ArrowUp','w','W'].includes(e.key)) { keys.space = true; useMouse = false; } 
-            
             if (e.key && e.key.length === 1 && state === 'MENU') {
                 secretKeys += e.key.toLowerCase(); if (secretKeys.length > 20) secretKeys = secretKeys.substring(secretKeys.length - 20);
-                if (secretKeys.includes("upgrade")) {
-                    unlockSkins();
-                    secretKeys = "";
-                }
+                if (secretKeys.includes("upgrade")) { unlockSkins(); secretKeys = ""; }
+                if (secretKeys.includes("secretskin")) { openSkinBuilder(); secretKeys = ""; }
             }
         });
         window.addEventListener('keyup', e => {
@@ -1260,24 +1413,67 @@
         });
 
         // --- MENU LOGIC ---
+        function togglePause() {
+            if (state === 'PLAYING') {
+                state = 'PAUSED';
+                let ps = document.getElementById('pause-screen');
+                ps.style.display = 'flex';
+                document.getElementById('pause-btn').innerText = '▶ Resume';
+                // Fill pause-screen stats
+                if (player && player.alive) {
+                    document.getElementById('ps-length').innerText = player.length;
+                    document.getElementById('ps-mass').innerText = Math.floor(player.mass);
+                    document.getElementById('ps-kills').innerText = player.kills;
+                    let aliveSnakes = snakes.filter(s=>s.alive);
+                    let r = aliveSnakes.indexOf(player) + 1;
+                    document.getElementById('ps-rank').innerText = '#' + r + ' / ' + aliveSnakes.length;
+                }
+            } else if (state === 'PAUSED') {
+                state = 'PLAYING';
+                document.getElementById('pause-screen').style.display = 'none';
+                document.getElementById('pause-btn').innerText = '⏸ Pause';
+                lastTime = performance.now();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && state === 'PLAYING') { togglePause(); }
+            else if (!document.hidden && state === 'PAUSED') { togglePause(); }
+        });
+
+        document.getElementById('resume-btn').addEventListener('click', () => {
+            if (state === 'PAUSED') togglePause();
+        });
+        document.getElementById('quit-btn').addEventListener('click', () => {
+            state = 'MENU';
+            document.getElementById('pause-screen').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'none';
+            ui.hud.style.display = 'none'; ui.leaderboard.style.display = 'none';
+            document.getElementById('bottom-right').style.display = 'none';
+            ui.puHud.innerHTML = '';
+            AudioSys.toggleBoost(false);
+            ui.overlay.style.display = 'flex';
+        });
+
         function showDeathScreen() {
             state = 'DEAD';
             let ds = Math.floor((Date.now() - gameStartTime)/1000);
-
             document.getElementById('ds-length').innerText = player.length;
             document.getElementById('ds-kills').innerText = player.kills;
             document.getElementById('ds-rank').innerText = `${player.finalRank} of ${snakes.filter(s=>s.alive).length + 1}`;
             document.getElementById('ds-time').innerText = `${Math.floor(ds/60)}m ${ds%60}s`;
             document.getElementById('ds-orbs').innerText = player.orbsEaten || 0;
-
-            ui.ds.style.display = 'flex'; ui.hud.style.display = 'none'; ui.leaderboard.style.display = 'none'; ui.minimap.style.display = 'none'; ui.rcBadge.style.display = 'none'; ui.puHud.innerHTML = '';
+            ui.ds.style.display = 'flex'; ui.hud.style.display = 'none'; ui.leaderboard.style.display = 'none';
+            document.getElementById('bottom-right').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'none';
+            ui.rcBadge.style.display = 'none'; ui.puHud.innerHTML = '';
         }
 
         document.getElementById('play-offline-btn').addEventListener('click', () => { isMultiplayer = false; initGameEnvironment(); for (let i=0; i<GAME.BOT_COUNT; i++) spawnBot(); });
         document.getElementById('ds-play-again').addEventListener('click', () => {
             ui.ds.style.display = 'none';
             if (!isMultiplayer) { initGameEnvironment(); for (let i=0; i<GAME.BOT_COUNT; i++) spawnBot(); }
-            else { /* Multiplayer Respawn Logic handled via socket if connected */ }
         });
         document.getElementById('ds-main-menu').addEventListener('click', () => {
             ui.ds.style.display = 'none'; ui.overlay.style.display = 'flex';
@@ -1285,17 +1481,24 @@
             state = 'MENU';
         });
 
-        // Settings Modal
         document.getElementById('settings-btn').addEventListener('click', () => document.getElementById('settings-modal').style.display = 'flex');
         document.getElementById('close-settings').addEventListener('click', () => document.getElementById('settings-modal').style.display = 'none');
         document.getElementById('vol-slider').addEventListener('input', e => SETTINGS.vol = parseFloat(e.target.value));
         document.getElementById('fps-toggle').addEventListener('change', e => { SETTINGS.fps = e.target.checked; document.getElementById('fps-counter').style.display = SETTINGS.fps ? 'block' : 'none'; });
         document.getElementById('pq-toggle').addEventListener('change', e => SETTINGS.highQuality = e.target.checked);
 
-        // --- NETWORK STUBS ---
         document.getElementById('host-btn').addEventListener('click', () => { showMsg("Multiplayer requires Node.js backend. Play offline!", "#ffcc00"); });
         document.getElementById('join-btn').addEventListener('click', () => { showMsg("Multiplayer requires Node.js backend. Play offline!", "#ffcc00"); });
 
+        function copyRoomCode() {
+            if (roomCode) {
+                navigator.clipboard.writeText(roomCode).then(() => {
+                    let el = document.getElementById('rc-copied');
+                    el.style.display = 'inline';
+                    setTimeout(() => el.style.display = 'none', 2000);
+                });
+            }
+        }
     </script>
 </body>
 </html>
