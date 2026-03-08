@@ -481,7 +481,7 @@
         // --- GLOBAL STATE ---
         const canvas = document.getElementById('game'), ctx = canvas.getContext('2d', { alpha: false });
         const minimapCanvas = document.getElementById('minimap'), minimapCtx = minimapCanvas.getContext('2d');
-        let width, height, snakes = [], orbs = [], particles = [], floatingTexts = [], powerups = [], killFeed = [];
+        let width, height, snakes = [], orbs = [], particles = [], floatingTexts = [], powerups = [], killFeed = [], toxicPuddles = [];
         let player = null, camera = { x: 0, y: 0, zoom: 1, targetZoom: 1 }, screenShake = 0;
         let state = 'MENU', frameCount = 0, lastTime = 0, secretKeys = "", lastRank = -1, gameStartTime = 0;
         let isMultiplayer = false, roomCode = "", socket = null, syncInterval = null;
@@ -780,7 +780,7 @@
             freeze:     { c:'#00ffff', i:'❄️', label:'FREEZE!',      dur:PU_DUR, floatText:'FROZEN BOTS!' },
             kingsize:   { c:'#ff8800', i:'👑', label:'KING SIZE!',   dur:PU_DUR, floatText:'KING SIZE!' },
             multiplier: { c:'#ff00cc', i:'✖', label:'5x MASS!',     dur:PU_DUR, floatText:'+5x MASS!' },
-            widevision: { c:'#00ff88', i:'🔭', label:'WIDE VIEW!',   dur:PU_DUR, floatText:'WIDE VISION!' },
+            toxic:      { c:'#39ff14', i:'☣️',  label:'TOXIC!',        dur:PU_DUR, floatText:'TOXIC WASTE!' },
         };
         const PU_TYPES = Object.keys(PU_CONFIG);
 
@@ -817,6 +817,58 @@
             }
         }
 
+        // ── TOXIC PUDDLE ─────────────────────────────────────────────────────────
+        class ToxicPuddle {
+            constructor(x, y) {
+                this.x = x + (Math.random()-0.5)*40;
+                this.y = y + (Math.random()-0.5)*40;
+                this.radius = 30 + Math.random()*20;
+                this.life = 1; // 0..1, fades out
+                this.maxAge = 600; // frames (~10s)
+                this.age = 0;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.blobs = [];
+                for(let i=0;i<6;i++) {
+                    let a = Math.random()*Math.PI*2, d = Math.random()*this.radius*0.7;
+                    this.blobs.push({x:Math.cos(a)*d, y:Math.sin(a)*d, r:8+Math.random()*12});
+                }
+            }
+            update() {
+                this.age++;
+                this.wobble += 0.04;
+                this.life = 1 - (this.age / this.maxAge);
+                return this.age < this.maxAge;
+            }
+            draw(ctx) {
+                let dx = this.x - camera.x, dy = this.y - camera.y;
+                let vw = width/camera.zoom/2+100, vh = height/camera.zoom/2+100;
+                if(Math.abs(dx)>vw||Math.abs(dy)>vh) return;
+                let alpha = this.life * 0.75;
+                ctx.save(); ctx.translate(this.x, this.y);
+                ctx.shadowColor = '#39ff14'; ctx.shadowBlur = 18 * this.life;
+                // main puddle blob
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = '#1a4a00';
+                ctx.beginPath(); ctx.arc(0, 0, this.radius * (0.9 + Math.sin(this.wobble)*0.1), 0, Math.PI*2); ctx.fill();
+                // glowing green surface blobs
+                ctx.fillStyle = '#39ff14';
+                ctx.globalAlpha = alpha * 0.6;
+                for(let b of this.blobs) {
+                    let br = b.r * (0.8 + Math.sin(this.wobble + b.x)*0.2);
+                    ctx.beginPath(); ctx.arc(b.x + Math.sin(this.wobble)*3, b.y + Math.cos(this.wobble)*3, br, 0, Math.PI*2); ctx.fill();
+                }
+                // bubble drips
+                ctx.globalAlpha = alpha * 0.9;
+                ctx.fillStyle = '#88ff44';
+                let bubbleT = (this.wobble * 2) % (Math.PI*2);
+                ctx.beginPath(); ctx.arc(Math.cos(bubbleT)*this.radius*0.5, Math.sin(bubbleT*0.7)*this.radius*0.4 - this.radius*0.3, 4, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(Math.cos(bubbleT+2)*this.radius*0.3, Math.sin(bubbleT+1)*this.radius*0.5, 3, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+            get killRadius() { return this.radius * 0.85; }
+        }
+
         class Snake {
             constructor(x, y, isPlayer, name, skin) {
                 this.isPlayer = isPlayer; this.name = name; this.skin = skin; this.id = Math.floor(Math.random()*1000);
@@ -833,7 +885,7 @@
                 this.spawnTimer = 60; this.isNumberOne = false; this.orbsEaten = 0; this.finalRank = 0;
 
                 // Powerups
-                this.powerups = { speed:0, shield:0, magnet:0, ghost:0, freeze:0, kingsize:0, multiplier:0, widevision:0 };
+                this.powerups = { speed:0, shield:0, magnet:0, ghost:0, freeze:0, kingsize:0, multiplier:0, toxic:0 }; this.toxicTimer = 0;
                 this.trail = [];
                 
                 // Bot AI specific state
@@ -858,6 +910,14 @@
                 let _now = Date.now();
                 for(let p in this.powerups) if(this.powerups[p] > 0 && _now > this.powerups[p]) this.powerups[p] = 0;
                 if(this.isPlayer) this.updatePowerupHUD();
+                // Toxic waste: drop a puddle every 60 frames while active
+                if(this.powerups.toxic > 0) {
+                    this.toxicTimer--;
+                    if(this.toxicTimer <= 0) {
+                        this.toxicTimer = 60;
+                        toxicPuddles.push(new ToxicPuddle(this.head.x, this.head.y));
+                    }
+                }
 
                 let maxLen = this.isPlayer ? 99999 : 120; // cap bot length
                 this.targetLength = Math.min(maxLen, Math.floor(this.mass / 15) + 10);
@@ -1145,7 +1205,7 @@
                 ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
                 // Active powerup aura
                 let auraColor = null;
-                for(let p of ['speed','magnet','ghost','shield','freeze','kingsize','multiplier','widevision']) {
+                for(let p of ['speed','magnet','ghost','shield','freeze','kingsize','multiplier','toxic']) {
                     if(this.powerups[p] > 0 && PU_CONFIG[p]) { auraColor = PU_CONFIG[p].c; break; }
                 }
                 if(auraColor) {
@@ -1278,7 +1338,7 @@
         function initGameEnvironment() {
             AudioSys.init();
             gameStartTime = Date.now();
-            snakes = []; orbs = []; particles = []; floatingTexts = []; powerups = []; killFeed = []; lastRank = -1;
+            snakes = []; orbs = []; particles = []; floatingTexts = []; powerups = []; killFeed = []; toxicPuddles = []; lastRank = -1;
             if (syncInterval) clearInterval(syncInterval);
 
             player = new Snake(0, 0, true, ui.nameInput.value.trim() || "Player", ui.skinSelect.value);
@@ -1387,6 +1447,32 @@
                 }
             }
 
+            // Toxic puddle kill collision
+            for(let tp of toxicPuddles) {
+                for(let s of snakes) {
+                    if(!s.alive || s.powerups.ghost > 0 || s.powerups.toxic > 0) continue; // toxic carrier immune
+                    if(distSq(s.head.x, s.head.y, tp.x, tp.y) < tp.killRadius**2) {
+                        // show warning first frame, kill on next contact
+                        if(!s._toxicWarned) {
+                            s._toxicWarned = true;
+                            let tsx = (s.head.x - camera.x) * camera.zoom + width/2;
+                            let tsy = (s.head.y - camera.y) * camera.zoom + height/2;
+                            if(s.isPlayer) addFloatingText(tsx, tsy - 30, '☣️ TOXIC!', '#39ff14');
+                        } else {
+                            s._toxicWarned = false;
+                            s.die();
+                            if(s.isPlayer) {
+                                let tsx = (s.head.x - camera.x) * camera.zoom + width/2;
+                                let tsy = (s.head.y - camera.y) * camera.zoom + height/2;
+                                addFloatingText(tsx, tsy - 40, '☣️ DISSOLVED!', '#39ff14');
+                            }
+                        }
+                    } else {
+                        s._toxicWarned = false;
+                    }
+                }
+            }
+
             // Snake-snake collision via grid — only check snakes in neighbouring cells
             let colCell = GAME.GRID_CELL * 2;
             let colGrid = buildGrid(colCell);
@@ -1473,6 +1559,14 @@
                 minimapCtx.beginPath(); minimapCtx.arc(mmx, mmy, isBig ? 3 : 1.5, 0, Math.PI*2); minimapCtx.fill();
             }
             minimapCtx.globalAlpha = 1;
+            // toxic puddles on minimap (green smear)
+            minimapCtx.globalAlpha = 0.5;
+            for(let tp of toxicPuddles) {
+                let mmx = 75 + tp.x * mmScale, mmy = 75 + tp.y * mmScale;
+                minimapCtx.fillStyle = '#39ff14';
+                minimapCtx.beginPath(); minimapCtx.arc(mmx, mmy, 2.5, 0, Math.PI*2); minimapCtx.fill();
+            }
+            minimapCtx.globalAlpha = 1;
             // powerups (flashing white/color)
             let pfVis = Math.floor(frameCount/15)%2===0;
             if(pfVis) {
@@ -1537,6 +1631,7 @@
             for (let s of snakes) s.update();
             if(frameCount % 2 === 0) { for (let p of particles) p.update(); }
             for (let p of powerups) p.update();
+            toxicPuddles = toxicPuddles.filter(tp => tp.update());
             particles = particles.filter(p => p.life > 0);
             checkCollisions();
             snakes = snakes.filter(s => s.alive);
@@ -1546,8 +1641,7 @@
                 camera.x += (player.head.x - camera.x) * lerpSpeed; 
                 camera.y += (player.head.y - camera.y) * lerpSpeed; 
                 let massZoom = Math.max(0.35, 1 - Math.log10(Math.max(50, player.mass) / 50) * 0.25);
-                let wideScale = player.powerups.widevision > 0 ? 0.5 : 1;
-            camera.targetZoom = (player.isBoosting ? massZoom * 0.92 : massZoom) * wideScale;
+            camera.targetZoom = player.isBoosting ? massZoom * 0.92 : massZoom;
                 camera.zoom += (camera.targetZoom - camera.zoom) * 0.05;
             }
 
@@ -1577,6 +1671,8 @@
                 ctx.fill();
             }
 
+            // Draw toxic puddles under everything
+            for(let tp of toxicPuddles) tp.draw(ctx);
             for(let p of powerups) p.draw(ctx);
             if(SETTINGS.highQuality) { for(let p of particles) p.draw(ctx); }
             [...snakes].filter(s=>s.alive).sort((a,b) => a.mass - b.mass).forEach(s => {
