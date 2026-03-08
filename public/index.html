@@ -49,7 +49,7 @@
             z-index: 100; pointer-events: auto; backdrop-filter: blur(10px);
         }
         
-        #overlay { background: rgba(0, 0, 0, 0.7); }
+        #overlay { background: rgba(0, 0, 0, 0.7); gap: 14px; }
         #death-screen { background: rgba(20, 0, 5, 0.85); z-index: 200; display: none; }
         #settings-modal { background: rgba(0, 0, 0, 0.8); z-index: 300; display: none; }
         #pause-screen { background: rgba(0, 0, 0, 0.5); z-index: 150; display: none; }
@@ -67,9 +67,9 @@
         .stats-box p { font-size: 1.2rem; margin: 10px 0; color: #ddd; }
         .stats-box span { color: var(--primary); font-family: monospace; font-size: 1.5rem; }
 
-        .menu-container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 400px; }
+        .menu-container { display: flex; flex-direction: column; gap: 18px; width: 100%; max-width: 400px; }
         .ds-btn-row { display: flex; gap: 20px; width: 100%; max-width: 450px; }
-        .menu-section { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: 15px; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
+        .menu-section { background: var(--ui-bg); border: 1px solid var(--ui-border); border-radius: 15px; padding: 22px 24px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
         .menu-section h2 { margin: 0 0 5px 0; font-size: 1.1rem; color: #aaa; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
 
         input[type="text"] { padding: 12px 20px; font-size: 1.2rem; border: 2px solid var(--ui-border); border-radius: 10px; background: rgba(0,0,0,0.6); color: white; text-align: center; outline: none; transition: border-color 0.3s; width: 100%; }
@@ -158,7 +158,7 @@
         #pause-btns { display: flex; gap: 14px; }
         #pause-btns button { width: 160px; padding: 12px; font-size: 1rem; }
 
-        #controls-hint { color: #666; margin-top: 8px; font-size: 0.82rem; text-align: center; line-height: 1.6; }
+        #controls-hint { color: #666; margin-top: 14px; font-size: 0.82rem; text-align: center; line-height: 1.8; }
         .room-step { display:flex; align-items:flex-start; gap:12px; color:#bbb; font-size:0.9rem; line-height:1.5; }
         .room-step b { color:#fff; }
         .step-num { background:rgba(0,255,204,0.12); border:1px solid rgba(0,255,204,0.3); color:var(--primary); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; flex-shrink:0; margin-top:1px; }
@@ -248,7 +248,7 @@
         </div>
 
         <!-- Profile card -->
-        <div class="menu-section" style="width:100%;max-width:360px;">
+        <div class="menu-section" style="width:100%;max-width:360px;margin-bottom:6px;">
             <h2>Profile</h2>
             <input type="text" id="player-name" placeholder="Enter Nickname" maxlength="15" autocomplete="off">
             <select id="skin-select" class="skin-select">
@@ -262,7 +262,7 @@
         </div>
 
         <!-- Play buttons -->
-        <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;">
+        <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px;">
             <button id="play-offline-btn" style="font-size:1.1rem;">▶ Play vs Bots</button>
             <div style="display:flex;gap:10px;">
                 <button id="create-room-btn" class="btn-secondary" style="flex:1;">🌐 Create Room</button>
@@ -420,9 +420,9 @@
     <script>
         // --- CORE GAME CONFIG ---
         const GAME = {
-            MAP_RADIUS: 4000, BASE_SPEED: 3.5, BOOST_SPEED: 7.5, TURN_SPEED: 0.12,
+            MAP_RADIUS: 4500, BASE_SPEED: 3.5, BOOST_SPEED: 7.5, TURN_SPEED: 0.12,
             BASE_SIZE: 12, SEGMENT_SPACING: 0.45, MIN_BOOST_LENGTH: 12,
-            MAX_ORBS: 800, BOT_COUNT: 30, MAX_PARTICLES: 200
+            MAX_ORBS: 600, BOT_COUNT: 60, MAX_PARTICLES: 100, MAX_POWERUPS: 5, POWERUP_INTERVAL: 900, GRID_CELL: 300
         };
 
         const COLORS = ['#ff0055', '#00ffcc', '#ffcc00', '#cc00ff', '#00ff33', '#0066ff', '#ff6600', '#ff00cc', '#33ccff', '#ccff00'];
@@ -770,24 +770,48 @@
             draw(ctx) { ctx.globalAlpha = this.life/this.maxLife; ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
         }
 
+        // ── POWERUP CONFIG (all 8 types) ─────────────────────────────────────────
+        const PU_CONFIG = {
+            speed:      { c:'#ffee00', i:'⚡', label:'SPEED!',       dur:7200, floatText:'+2x SPEED!' },
+            magnet:     { c:'#4488ff', i:'🧲', label:'MAGNET!',      dur:7200, floatText:'MAGNET!' },
+            ghost:      { c:'#cc44ff', i:'👻', label:'GHOST!',       dur:7200, floatText:'GHOST MODE!' },
+            shield:     { c:'#00ccff', i:'🛡', label:'SHIELD!',      dur:7200, floatText:'SHIELDED!' },
+            freeze:     { c:'#00ffff', i:'❄️', label:'FREEZE!',      dur:7200, floatText:'FROZEN BOTS!' },
+            kingsize:   { c:'#ff8800', i:'👑', label:'KING SIZE!',   dur:7200, floatText:'KING SIZE!' },
+            multiplier: { c:'#ff00cc', i:'✖', label:'5x MASS!',     dur:7200, floatText:'+5x MASS!' },
+            widevision: { c:'#00ff88', i:'🔭', label:'WIDE VIEW!',   dur:7200, floatText:'WIDE VISION!' },
+        };
+        const PU_TYPES = Object.keys(PU_CONFIG);
+
         class PowerUp {
             constructor(x, y, type) {
-                this.x = x; this.y = y; this.type = type; this.life = 900; // 15s at 60fps
-                this.angle = 0;
-                const config = { 'speed':{c:'#ffcc00', i:'⚡'}, 'shield':{c:'#0088ff', i:'🛡'}, 'magnet':{c:'#cc00ff', i:'🧲'}, 'ghost':{c:'#ffffff', i:'💀'} };
-                this.color = config[type].c; this.icon = config[type].i;
+                this.x = x; this.y = y; this.type = type;
+                this.life = 900; this.angle = 0; this.pulse = 0;
+                this.color = PU_CONFIG[type].c;
+                this.icon  = PU_CONFIG[type].i;
             }
-            update() { this.life--; this.angle += 0.05; }
+            update() { this.life--; this.angle += 0.05; this.pulse = Math.sin(Date.now()*0.005); }
             draw(ctx) {
-                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
-                ctx.strokeStyle = this.color; ctx.lineWidth = 3; ctx.beginPath();
-                ctx.moveTo(0, -25); ctx.lineTo(25, 0); ctx.lineTo(0, 25); ctx.lineTo(-25, 0); ctx.closePath();
-                ctx.stroke(); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill();
+                // viewport cull
+                let dx = this.x - camera.x, dy = this.y - camera.y;
+                let vw = width/camera.zoom/2+60, vh = height/camera.zoom/2+60;
+                if(Math.abs(dx)>vw||Math.abs(dy)>vh) return;
+                ctx.save(); ctx.translate(this.x, this.y);
+                // glow
+                ctx.shadowColor = this.color; ctx.shadowBlur = 18 + this.pulse*6;
+                // diamond
+                ctx.rotate(this.angle);
+                ctx.strokeStyle = this.color; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(0,-26); ctx.lineTo(26,0); ctx.lineTo(0,26); ctx.lineTo(-26,0); ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill(); ctx.stroke();
                 ctx.rotate(-this.angle);
-                ctx.fillStyle = this.color; ctx.font = "20px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(this.icon, 0, 0);
-                
-                ctx.beginPath(); ctx.arc(0, 0, 35, -Math.PI/2, -Math.PI/2 + (this.life/900)*Math.PI*2);
-                ctx.strokeStyle = `rgba(255,255,255,0.3)`; ctx.lineWidth = 2; ctx.stroke();
+                // icon
+                ctx.shadowBlur = 0;
+                ctx.font = '18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(this.icon, 0, 0);
+                // despawn arc
+                ctx.beginPath(); ctx.arc(0, 0, 34, -Math.PI/2, -Math.PI/2+(this.life/900)*Math.PI*2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2; ctx.stroke();
                 ctx.restore();
             }
         }
@@ -808,7 +832,7 @@
                 this.spawnTimer = 60; this.isNumberOne = false; this.orbsEaten = 0; this.finalRank = 0;
 
                 // Powerups
-                this.powerups = { speed: 0, shield: 0, magnet: 0, ghost: 0 };
+                this.powerups = { speed:0, shield:0, magnet:0, ghost:0, freeze:0, kingsize:0, multiplier:0, widevision:0 };
                 this.trail = [];
                 
                 // Bot AI specific state
@@ -832,8 +856,10 @@
                 for(let p in this.powerups) if(this.powerups[p] > 0) this.powerups[p]--;
                 if(this.isPlayer) this.updatePowerupHUD();
 
-                this.targetLength = Math.floor(this.mass / 15) + 10;
-                this.radius = GAME.BASE_SIZE + Math.log10(Math.max(50, this.mass) / 50) * 3.5;
+                let maxLen = this.isPlayer ? 99999 : 120; // cap bot length
+                this.targetLength = Math.min(maxLen, Math.floor(this.mass / 15) + 10);
+                let ksScale = this.powerups.kingsize > 0 ? 1.5 : 1;
+                this.radius = (GAME.BASE_SIZE + Math.log10(Math.max(50, this.mass) / 50) * 3.5) * ksScale;
 
                 let speedFactor = Math.max(0.95, 1 - (this.mass / 15000) * 0.05);
 
@@ -851,7 +877,8 @@
                     this.head.x += (this.netTarget.x - this.head.x) * 0.2; this.head.y += (this.netTarget.y - this.head.y) * 0.2;
                     this.isBoosting = this.netTarget.isBoosting || false;
                 } else if (!this.isRemote) {
-                    this.updateSmartBotAI();
+                    // Stagger AI: only update bot's AI every 3 frames, offset by bot index
+                    if ((frameCount + this.id) % 3 === 0) this.updateSmartBotAI();
                 }
 
                 // Momentum Turning
@@ -871,6 +898,7 @@
                 
                 let targetSpeed = (GAME.BASE_SPEED + (GAME.BOOST_SPEED - GAME.BASE_SPEED) * this.boostTransition) * speedFactor;
                 if (this.powerups.speed > 0) targetSpeed *= 2;
+                if (!this.isPlayer && this.powerups.freeze > 0) targetSpeed = 0;
                 this.speed = targetSpeed;
 
                 if (this.isBoosting) {
@@ -902,20 +930,29 @@
                 }
                 while (this.segments.length > this.targetLength) this.segments.pop();
 
-                for (let i = 1; i < this.segments.length; i++) {
-                    let curr = this.segments[i], prev = this.segments[i - 1];
+                // Only update every 2nd segment for offscreen bots (halves cost)
+                let segStep = (!this.isPlayer && Math.abs(this.head.x - camera.x) > width/camera.zoom) ? 2 : 1;
+                for (let i = 1; i < this.segments.length; i += segStep) {
+                    let curr = this.segments[i], prev = this.segments[i - (segStep)];
+                    if (!prev) prev = this.segments[i-1];
                     let dx = prev.x - curr.x, dy = prev.y - curr.y, d = Math.hypot(dx, dy);
-                    if (d > targetSpacing) { let ratio = (d - targetSpacing) / d; curr.x += dx * ratio; curr.y += dy * ratio; }
+                    if (d > targetSpacing * segStep) { let ratio = (d - targetSpacing * segStep) / d; curr.x += dx * ratio; curr.y += dy * ratio; }
                 }
             }
             
             updatePowerupHUD() {
                 let html = '';
-                const pmap = {speed:{i:'⚡',c:'#ffcc00'}, shield:{i:'🛡',c:'#0088ff'}, magnet:{i:'🧲',c:'#cc00ff'}, ghost:{i:'💀',c:'#ffffff'}};
                 for(let p in this.powerups) {
-                    if(this.powerups[p] > 0) {
-                        let pct = (this.powerups[p] / (p==='magnet'?600:(p==='speed'?480:(p==='shield'?360:300)))) * 100;
-                        html += `<div class="pu-icon" style="border-color:${pmap[p].c}; color:${pmap[p].c}"><div class="pu-fill" style="background:${pmap[p].c}44; height:${pct}%"></div>${pmap[p].i}</div>`;
+                    if(this.powerups[p] > 0 && PU_CONFIG[p]) {
+                        let cfg = PU_CONFIG[p];
+                        let pct = (this.powerups[p] / cfg.dur) * 100;
+                        let secs = Math.ceil(this.powerups[p] / 60);
+                        let flash = this.powerups[p] < 180 && Math.floor(frameCount/10)%2===0 ? '; opacity:0.4' : '';
+                        html += '<div class="pu-icon" style="border-color:'+cfg.c+'; color:'+cfg.c+flash+'">'
+                              + '<div class="pu-fill" style="background:'+cfg.c+'44; height:'+pct+'%"></div>'
+                              + cfg.i
+                              + '<span style="position:absolute;bottom:1px;font-size:9px;color:'+cfg.c+'">'+secs+'s</span>'
+                              + '</div>';
                     }
                 }
                 ui.puHud.innerHTML = html;
@@ -942,6 +979,7 @@
                 
                 for (let s of snakes) {
                     if (s === this || !s.alive) continue;
+                    if(distSq(headX, headY, s.head.x, s.head.y) > (evadeRadius * 5)**2) continue;
                     for (let i = 0; i < s.segments.length; i += 4) {
                         let seg = s.segments[i];
                         let dSq = distSq(headX, headY, seg.x, seg.y);
@@ -1010,12 +1048,12 @@
                     // FEED / BOOST_CHASE
                     if (nextState === 'WANDER') {
                         let bestFood = null, bestScore = -Infinity, clusterCount = 0;
-                        for (let o of orbs) {
+            for (let o of orbs) {
                             let dSq = distSq(headX, headY, o.x, o.y);
                             if (dSq < 90000) {
                                 if (o.color === this.color && dSq < 2500) continue;
                                 let nearby = 0;
-                                for (let o2 of orbs) { if (o !== o2 && distSq(o.x, o.y, o2.x, o2.y) < 10000) nearby++; }
+                                for (let oi2 = 0; oi2 < Math.min(orbs.length, 30); oi2++) { let o2=orbs[oi2]; if (o !== o2 && distSq(o.x, o.y, o2.x, o2.y) < 10000) nearby++; }
                                 let score = o.mass / (Math.sqrt(dSq) + 1) + nearby * 2;
                                 if (score > bestScore) { bestScore = score; bestFood = o; clusterCount = nearby; }
                             }
@@ -1101,7 +1139,15 @@
                 }
 
                 ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
-                if (this.isBoosting && SETTINGS.highQuality) { ctx.shadowColor = this.getColor(0); ctx.shadowBlur = 15; }
+                // Active powerup aura
+                let auraColor = null;
+                for(let p of ['speed','magnet','ghost','shield','freeze','kingsize','multiplier','widevision']) {
+                    if(this.powerups[p] > 0 && PU_CONFIG[p]) { auraColor = PU_CONFIG[p].c; break; }
+                }
+                if(auraColor) {
+                    let pulse = 0.6 + Math.sin(frameCount*0.15)*0.4;
+                    ctx.shadowColor = auraColor; ctx.shadowBlur = 22 * pulse;
+                } else if (this.isBoosting && SETTINGS.highQuality) { ctx.shadowColor = this.getColor(0); ctx.shadowBlur = 15; }
 
                 for (let i = this.segments.length - 1; i >= 0; i--) {
                     let seg = this.segments[i];
@@ -1219,9 +1265,10 @@
         }
 
         function spawnPowerup() {
-            let angle = rand(0, Math.PI * 2), distToCenter = rand(0, GAME.MAP_RADIUS - 500);
-            let types = ['speed', 'shield', 'magnet', 'ghost'];
-            powerups.push(new PowerUp(Math.cos(angle) * distToCenter, Math.sin(angle) * distToCenter, types[Math.floor(Math.random()*types.length)]));
+            if(powerups.length >= GAME.MAX_POWERUPS) return;
+            let angle = rand(0, Math.PI * 2), distToCenter = rand(200, GAME.MAP_RADIUS - 500);
+            let type = PU_TYPES[Math.floor(Math.random() * PU_TYPES.length)];
+            powerups.push(new PowerUp(Math.cos(angle) * distToCenter, Math.sin(angle) * distToCenter, type));
         }
 
         function initGameEnvironment() {
@@ -1246,26 +1293,49 @@
             state = 'PLAYING'; lastTime = performance.now(); canvas.focus(); requestAnimationFrame(gameLoop);
         }
 
+        // Spatial grid for fast collision
+        function buildGrid(cellSize) {
+            let grid = new Map();
+            let add = (key, item) => { if(!grid.has(key)) grid.set(key, []); grid.get(key).push(item); };
+            for(let s of snakes) {
+                if(!s.alive) continue;
+                let cx = Math.floor(s.head.x / cellSize), cy = Math.floor(s.head.y / cellSize);
+                add(cx+','+cy, s);
+            }
+            return grid;
+        }
+
         function checkCollisions() {
+            let cell = GAME.GRID_CELL;
+            // Build snake head grid
+            let snakeGrid = buildGrid(cell);
+
+            // Orb vs snakes — only check snakes in nearby cells
             for (let i = orbs.length - 1; i >= 0; i--) {
                 let o = orbs[i]; let collected = false;
-                for (let s of snakes) {
-                    if (!s.alive) continue;
-                    let pullDist = s.powerups.magnet > 0 ? 120 : (s.radius + o.radius + 5);
-                    if (distSq(s.head.x, s.head.y, o.x, o.y) < pullDist**2) {
-                        s.mass += o.mass; collected = true;
-                        if(s.isPlayer) {
-                            AudioSys.play('eat'); s.orbsEaten++;
-                            let sx = (o.x - camera.x) * camera.zoom + width/2;
-                            let sy = (o.y - camera.y) * camera.zoom + height/2;
-                            addFloatingText(sx, sy, `+${Math.floor(o.mass)}`, o.color);
-                            if(o.killer && o.killer !== s.name) {
-                                let psx = (s.head.x - camera.x) * camera.zoom + width/2;
-                                let psy = (s.head.y - camera.y) * camera.zoom + height/2;
-                                addFloatingText(psx, psy - 40 * camera.zoom, "Loot Stealer!", "#ff0000");
+                let ocx = Math.floor(o.x / cell), ocy = Math.floor(o.y / cell);
+                outer: for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) {
+                    let nearby = snakeGrid.get((ocx+dx)+','+(ocy+dy));
+                    if(!nearby) continue;
+                    for(let s of nearby) {
+                        if(!s.alive) continue;
+                        let pullDist = s.powerups.magnet > 0 ? (s.radius + o.radius) * 3 * (s.powerups.kingsize>0?1.5:1) : (s.radius + o.radius + 5);
+                        if (distSq(s.head.x, s.head.y, o.x, o.y) < pullDist**2) {
+                            let mMult = s.isPlayer && s.powerups.multiplier > 0 ? 5 : (s.powerups.multiplier > 0 ? 2 : 1);
+                            s.mass += o.mass * mMult; collected = true;
+                            if(s.isPlayer) {
+                                AudioSys.play('eat'); s.orbsEaten++;
+                                let sx = (o.x - camera.x) * camera.zoom + width/2;
+                                let sy = (o.y - camera.y) * camera.zoom + height/2;
+                                addFloatingText(sx, sy, '+'+Math.floor(o.mass), o.color);
+                                if(o.killer && o.killer !== s.name) {
+                                    let psx = (s.head.x - camera.x) * camera.zoom + width/2;
+                                    let psy = (s.head.y - camera.y) * camera.zoom + height/2;
+                                    addFloatingText(psx, psy - 40*camera.zoom, "Loot Stealer!", "#ff0000");
+                                }
                             }
+                            break outer;
                         }
-                        break;
                     }
                 }
                 if (collected) orbs.splice(i, 1);
@@ -1274,39 +1344,76 @@
             for(let i = powerups.length - 1; i >= 0; i--) {
                 let p = powerups[i];
                 if(p.life <= 0) { powerups.splice(i,1); continue; }
+                let picked = false;
                 for(let s of snakes) {
-                    if(!s.alive) continue;
-                    if(distSq(s.head.x, s.head.y, p.x, p.y) < (s.radius + 25)**2) {
-                        let dur = p.type==='speed'?480:(p.type==='shield'?360:(p.type==='magnet'?600:300));
-                        s.powerups[p.type] = dur;
-                        if(s.isPlayer) { 
-                            AudioSys.play('powerup'); 
-                            let sx = (p.x - camera.x) * camera.zoom + width/2;
-                            let sy = (p.y - camera.y) * camera.zoom + height/2;
-                            addFloatingText(sx, sy, p.type.toUpperCase()+"!", p.color); 
+                    if(!s.alive || picked) continue;
+                    if(distSq(s.head.x, s.head.y, p.x, p.y) < (s.radius + 28)**2) {
+                        let cfg = PU_CONFIG[p.type];
+                        if(!cfg) continue;
+                        // Apply effect
+                        if(p.type === 'freeze') {
+                            // freeze all nearby bots
+                            for(let other of snakes) {
+                                if(!other.alive || other === s || other.isPlayer) continue;
+                                if(distSq(s.head.x, s.head.y, other.head.x, other.head.y) < 800**2) {
+                                    other.powerups.freeze = cfg.dur;
+                                }
+                            }
+                            s.powerups.freeze = 1; // picker doesn't freeze
+                        } else {
+                            s.powerups[p.type] = cfg.dur;
                         }
-                        powerups.splice(i,1); break;
+                        // Floating text — always show for player, show near-player for bots
+                        let sx = (p.x - camera.x) * camera.zoom + width/2;
+                        let sy = (p.y - camera.y) * camera.zoom + height/2;
+                        if(s.isPlayer) {
+                            AudioSys.play('powerup');
+                            addFloatingText(sx, sy - 20, cfg.floatText, cfg.c);
+                        } else {
+                            // show floating text for bot pickup if on screen
+                            let bsx = (s.head.x - camera.x) * camera.zoom + width/2;
+                            let bsy = (s.head.y - camera.y) * camera.zoom + height/2;
+                            if(bsx > 0 && bsx < width && bsy > 0 && bsy < height) {
+                                addFloatingText(bsx, bsy - 20, '🤖 ' + cfg.label, cfg.c);
+                            }
+                        }
+                        picked = true;
+                        powerups.splice(i,1);
                     }
                 }
             }
 
-            for (let i=0; i<snakes.length; i++) {
-                let s1 = snakes[i]; if (!s1.alive || s1.powerups.ghost > 0) continue;
-                for (let j=i+1; j<snakes.length; j++) {
-                    let s2 = snakes[j]; if (!s2.alive || s2.powerups.ghost > 0 || (s1.isRemote && s2.isRemote)) continue;
-                    if (Math.abs(s1.head.x - s2.head.x) > Math.max(s1.targetLength, s2.targetLength) * 15 + 100) continue;
-                    let headDistSq = distSq(s1.head.x, s1.head.y, s2.head.x, s2.head.y);
-                    if (headDistSq < (s1.radius + s2.radius)**2) {
-                        if (s1.powerups.shield > 0 && s2.powerups.shield === 0) s2.die(s1);
-                        else if (s2.powerups.shield > 0 && s1.powerups.shield === 0) s1.die(s2);
-                        else if (s1.mass > s2.mass) s2.die(s1);
-                        else if (s2.mass > s1.mass) s1.die(s2);
-                        else { s1.die(); s2.die(); }
-                        continue;
+            // Snake-snake collision via grid — only check snakes in neighbouring cells
+            let colCell = GAME.GRID_CELL * 2;
+            let colGrid = buildGrid(colCell);
+            let checked = new Set();
+            for(let s1 of snakes) {
+                if(!s1.alive || s1.powerups.ghost > 0) continue;
+                let cx = Math.floor(s1.head.x / colCell), cy = Math.floor(s1.head.y / colCell);
+                for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) {
+                    let near = colGrid.get((cx+dx)+','+(cy+dy));
+                    if(!near) continue;
+                    for(let s2 of near) {
+                        if(s1===s2||!s2.alive||s2.powerups.ghost>0) continue;
+                        let pairKey = s1.id<s2.id ? s1.id+'-'+s2.id : s2.id+'-'+s1.id;
+                        if(checked.has(pairKey)) continue;
+                        checked.add(pairKey);
+                        if(s1.isRemote && s2.isRemote) continue;
+                        let headDistSq = distSq(s1.head.x, s1.head.y, s2.head.x, s2.head.y);
+                        if(headDistSq < (s1.radius + s2.radius)**2) {
+                            if(s1.powerups.shield>0 && s2.powerups.shield===0) s2.die(s1);
+                            else if(s2.powerups.shield>0 && s1.powerups.shield===0) s1.die(s2);
+                            else if(s1.mass > s2.mass) s2.die(s1);
+                            else if(s2.mass > s1.mass) s1.die(s2);
+                            else { s1.die(); s2.die(); }
+                            continue;
+                        }
+                        // Segment collision — only check every 4th segment for performance
+                        let hitRadius = (s1.radius * 0.8 + s2.radius * 0.8)**2;
+                        let hit1 = false;
+                        for(let k=2;k<s2.segments.length;k+=4) { if(distSq(s1.head.x,s1.head.y,s2.segments[k].x,s2.segments[k].y)<hitRadius){s1.die(s2);hit1=true;break;} }
+                        if(!hit1) for(let k=2;k<s1.segments.length;k+=4) { if(distSq(s2.head.x,s2.head.y,s1.segments[k].x,s1.segments[k].y)<hitRadius){s2.die(s1);break;} }
                     }
-                    let hit1 = false, hit2 = false;
-                    for(let k=2; k<s2.segments.length; k+=2) { if (distSq(s1.head.x, s1.head.y, s2.segments[k].x, s2.segments[k].y) < (s1.radius * 0.8 + s2.radius * 0.8)**2) { s1.die(s2); hit1 = true; break; } }
-                    if(!hit1) { for(let k=2; k<s1.segments.length; k+=2) { if (distSq(s2.head.x, s2.head.y, s1.segments[k].x, s1.segments[k].y) < (s2.radius * 0.8 + s1.radius * 0.8)**2) { s2.die(s1); hit2 = true; break; } } }
                 }
             }
         }
@@ -1345,15 +1452,41 @@
                 updateKillFeedUI();
             }
 
+            if(frameCount % 3 === 0) {
             minimapCtx.clearRect(0, 0, 150, 150);
-            minimapCtx.fillStyle = 'rgba(20,20,40,0.8)'; minimapCtx.beginPath(); minimapCtx.arc(75, 75, 75, 0, Math.PI*2); minimapCtx.fill();
-            minimapCtx.strokeStyle = 'rgba(255,255,255,0.2)'; minimapCtx.stroke();
-            let scale = 75 / GAME.MAP_RADIUS;
-            for (let s of snakes) {
-                if (!s.alive) continue;
-                minimapCtx.fillStyle = s === player ? '#fff' : s.color; minimapCtx.beginPath();
-                minimapCtx.arc(75 + s.head.x * scale, 75 + s.head.y * scale, s === player ? 3 : 1.5, 0, Math.PI*2); minimapCtx.fill();
+            // bg circle
+            minimapCtx.fillStyle = 'rgba(5,5,15,0.9)'; minimapCtx.beginPath(); minimapCtx.arc(75,75,75,0,Math.PI*2); minimapCtx.fill();
+            minimapCtx.strokeStyle = 'rgba(255,255,255,0.15)'; minimapCtx.lineWidth=1; minimapCtx.stroke();
+            let mmScale = 72 / GAME.MAP_RADIUS;
+            // bots
+            for(let s of snakes) {
+                if(!s.alive || s === player) continue;
+                let mmx = 75 + s.head.x * mmScale, mmy = 75 + s.head.y * mmScale;
+                if(mmx<0||mmx>150||mmy<0||mmy>150) continue;
+                let isBig = s.mass > 500;
+                minimapCtx.fillStyle = isBig ? '#ff4444' : s.color;
+                minimapCtx.globalAlpha = isBig ? 1 : 0.5;
+                minimapCtx.beginPath(); minimapCtx.arc(mmx, mmy, isBig ? 3 : 1.5, 0, Math.PI*2); minimapCtx.fill();
             }
+            minimapCtx.globalAlpha = 1;
+            // powerups (flashing white/color)
+            let pfVis = Math.floor(frameCount/15)%2===0;
+            if(pfVis) {
+                for(let p of powerups) {
+                    let mmx = 75 + p.x * mmScale, mmy = 75 + p.y * mmScale;
+                    minimapCtx.fillStyle = p.color;
+                    minimapCtx.beginPath(); minimapCtx.arc(mmx, mmy, 3, 0, Math.PI*2); minimapCtx.fill();
+                }
+            }
+            // player (bright green, larger)
+            if(player && player.alive) {
+                let mmx = 75 + player.head.x * mmScale, mmy = 75 + player.head.y * mmScale;
+                minimapCtx.fillStyle = '#00ff88';
+                minimapCtx.shadowColor = '#00ff88'; minimapCtx.shadowBlur = 6;
+                minimapCtx.beginPath(); minimapCtx.arc(mmx, mmy, 4, 0, Math.PI*2); minimapCtx.fill();
+                minimapCtx.shadowBlur = 0;
+            }
+            } // end minimap throttle
         }
 
         function drawBackground(vw, vh) {
@@ -1390,11 +1523,15 @@
                 if (player && player.alive && distSq(0,0,player.head.x,player.head.y) < 40000) spawnOrb(0);
             }
             if (frameCount % 60 === 0 && Math.random() > 0.8 && orbs.length < GAME.MAX_ORBS) spawnOrb(3);
-            if (frameCount % 1800 === 0 && powerups.length < 4) spawnPowerup();
+            if (frameCount % GAME.POWERUP_INTERVAL === 0) spawnPowerup();
 
-            for (let o of orbs) o.update();
+            // Only update orbs near the player (type 3 fleeing orbs always update)
+            let orbCullR = (width/camera.zoom) + 400;
+            for (let o of orbs) {
+                if(o.type === 3 || (player && distSq(o.x,o.y,player.head.x,player.head.y) < orbCullR**2)) o.update();
+            }
             for (let s of snakes) s.update();
-            for (let p of particles) p.update();
+            if(frameCount % 2 === 0) { for (let p of particles) p.update(); }
             for (let p of powerups) p.update();
             particles = particles.filter(p => p.life > 0);
             checkCollisions();
@@ -1405,11 +1542,13 @@
                 camera.x += (player.head.x - camera.x) * lerpSpeed; 
                 camera.y += (player.head.y - camera.y) * lerpSpeed; 
                 let massZoom = Math.max(0.35, 1 - Math.log10(Math.max(50, player.mass) / 50) * 0.25);
-                camera.targetZoom = player.isBoosting ? massZoom * 0.92 : massZoom;
+                let wideScale = player.powerups.widevision > 0 ? 0.5 : 1;
+            camera.targetZoom = (player.isBoosting ? massZoom * 0.92 : massZoom) * wideScale;
                 camera.zoom += (camera.targetZoom - camera.zoom) * 0.05;
             }
 
             let vw = width / camera.zoom, vh = height / camera.zoom;
+            let cullVW = vw / 2 + 200, cullVH = vh / 2 + 200;
             drawBackground(vw, vh);
             
             ctx.save(); 
@@ -1419,7 +1558,7 @@
             const orbBatches = {};
             let pulse = Math.sin(frameCount * 0.05) * 0.15;
             for (let o of orbs) {
-                if (o.x < camera.x - vw/2 - 200 || o.x > camera.x + vw/2 + 200 || o.y < camera.y - vh/2 - 200 || o.y > camera.y + vh/2 + 200) continue;
+                if (Math.abs(o.x - camera.x) > cullVW || Math.abs(o.y - camera.y) > cullVH) continue;
                 if (!orbBatches[o.color]) orbBatches[o.color] = [];
                 orbBatches[o.color].push(o);
             }
@@ -1436,7 +1575,11 @@
 
             for(let p of powerups) p.draw(ctx);
             if(SETTINGS.highQuality) { for(let p of particles) p.draw(ctx); }
-            [...snakes].sort((a,b) => a.mass - b.mass).forEach(s => s.draw(ctx));
+            [...snakes].filter(s=>s.alive).sort((a,b) => a.mass - b.mass).forEach(s => {
+                let sdx = s.head.x - camera.x, sdy = s.head.y - camera.y;
+                if(Math.abs(sdx) > cullVW + s.radius*2 || Math.abs(sdy) > cullVH + s.radius*2) return;
+                s.draw(ctx);
+            });
             
             ctx.restore();
 
