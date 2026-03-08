@@ -771,15 +771,16 @@
         }
 
         // ── POWERUP CONFIG (all 8 types) ─────────────────────────────────────────
+        const PU_DUR = 60000; // 1 minute in milliseconds — always exact regardless of FPS
         const PU_CONFIG = {
-            speed:      { c:'#ffee00', i:'⚡', label:'SPEED!',       dur:7200, floatText:'+2x SPEED!' },
-            magnet:     { c:'#4488ff', i:'🧲', label:'MAGNET!',      dur:7200, floatText:'MAGNET!' },
-            ghost:      { c:'#cc44ff', i:'👻', label:'GHOST!',       dur:7200, floatText:'GHOST MODE!' },
-            shield:     { c:'#00ccff', i:'🛡', label:'SHIELD!',      dur:7200, floatText:'SHIELDED!' },
-            freeze:     { c:'#00ffff', i:'❄️', label:'FREEZE!',      dur:7200, floatText:'FROZEN BOTS!' },
-            kingsize:   { c:'#ff8800', i:'👑', label:'KING SIZE!',   dur:7200, floatText:'KING SIZE!' },
-            multiplier: { c:'#ff00cc', i:'✖', label:'5x MASS!',     dur:7200, floatText:'+5x MASS!' },
-            widevision: { c:'#00ff88', i:'🔭', label:'WIDE VIEW!',   dur:7200, floatText:'WIDE VISION!' },
+            speed:      { c:'#ffee00', i:'⚡', label:'SPEED!',       dur:PU_DUR, floatText:'+2x SPEED!' },
+            magnet:     { c:'#4488ff', i:'🧲', label:'MAGNET!',      dur:PU_DUR, floatText:'MAGNET!' },
+            ghost:      { c:'#cc44ff', i:'👻', label:'GHOST!',       dur:PU_DUR, floatText:'GHOST MODE!' },
+            shield:     { c:'#00ccff', i:'🛡', label:'SHIELD!',      dur:PU_DUR, floatText:'SHIELDED!' },
+            freeze:     { c:'#00ffff', i:'❄️', label:'FREEZE!',      dur:PU_DUR, floatText:'FROZEN BOTS!' },
+            kingsize:   { c:'#ff8800', i:'👑', label:'KING SIZE!',   dur:PU_DUR, floatText:'KING SIZE!' },
+            multiplier: { c:'#ff00cc', i:'✖', label:'5x MASS!',     dur:PU_DUR, floatText:'+5x MASS!' },
+            widevision: { c:'#00ff88', i:'🔭', label:'WIDE VIEW!',   dur:PU_DUR, floatText:'WIDE VISION!' },
         };
         const PU_TYPES = Object.keys(PU_CONFIG);
 
@@ -853,7 +854,9 @@
                 if (this.spawnTimer > 0) this.spawnTimer--;
                 
                 // Powerup Timers
-                for(let p in this.powerups) if(this.powerups[p] > 0) this.powerups[p]--;
+                // Expire powerups by real time (timestamp), not frame count
+                let _now = Date.now();
+                for(let p in this.powerups) if(this.powerups[p] > 0 && _now > this.powerups[p]) this.powerups[p] = 0;
                 if(this.isPlayer) this.updatePowerupHUD();
 
                 let maxLen = this.isPlayer ? 99999 : 120; // cap bot length
@@ -945,9 +948,10 @@
                 for(let p in this.powerups) {
                     if(this.powerups[p] > 0 && PU_CONFIG[p]) {
                         let cfg = PU_CONFIG[p];
-                        let pct = (this.powerups[p] / cfg.dur) * 100;
-                        let secs = Math.ceil(this.powerups[p] / 60);
-                        let flash = this.powerups[p] < 180 && Math.floor(frameCount/10)%2===0 ? '; opacity:0.4' : '';
+                        let remaining = this.powerups[p] - Date.now();
+                        let pct = Math.max(0, (remaining / cfg.dur) * 100);
+                        let secs = Math.max(0, Math.ceil(remaining / 1000));
+                        let flash = remaining < 10000 && Math.floor(frameCount/10)%2===0 ? '; opacity:0.4' : '';
                         html += '<div class="pu-icon" style="border-color:'+cfg.c+'; color:'+cfg.c+flash+'">'
                               + '<div class="pu-fill" style="background:'+cfg.c+'44; height:'+pct+'%"></div>'
                               + cfg.i
@@ -1356,12 +1360,12 @@
                             for(let other of snakes) {
                                 if(!other.alive || other === s || other.isPlayer) continue;
                                 if(distSq(s.head.x, s.head.y, other.head.x, other.head.y) < 800**2) {
-                                    other.powerups.freeze = cfg.dur;
+                                    other.powerups.freeze = Date.now() + cfg.dur;
                                 }
                             }
                             s.powerups.freeze = 1; // picker doesn't freeze
                         } else {
-                            s.powerups[p.type] = cfg.dur;
+                            s.powerups[p.type] = Date.now() + cfg.dur;
                         }
                         // Floating text — always show for player, show near-player for bots
                         let sx = (p.x - camera.x) * camera.zoom + width/2;
